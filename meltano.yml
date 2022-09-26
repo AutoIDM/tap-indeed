@@ -1,0 +1,32 @@
+version: 1
+send_anonymous_usage_stats: true
+project_id: tap-indeedsponsoredjobs
+plugins:
+  extractors:
+  - name: tap-indeedsponsoredjobs
+    namespace: tap_indeedsponsoredjobs
+    pip_url: -e .
+    capabilities:
+      #    - state
+    - catalog
+    - discover
+    settings:
+    - name: client_id
+      kind: password
+    - name: client_secret
+      kind: password
+    select:
+    - '*.*'
+  loaders:
+  - name: target-jsonl
+    variant: andyh1203
+    pip_url: target-jsonl
+environments:
+- name: dev
+  config:
+    plugins:
+      extractors:
+      - name: tap-indeedsponsoredjobs
+        select:
+        - '*.*'
+        - '*.*'
