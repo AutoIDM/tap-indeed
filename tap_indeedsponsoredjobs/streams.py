@@ -49,7 +49,6 @@ class Campaigns(IndeedSponsoredJobsStream):
     """Campaigns per Employer"""
     name = "campaigns"
     path = "/v1/campaigns"
-    partitions = [{"_sdc_status":"Active"},{"_sdc_status":"Paused"}]
     primary_keys = ["Id"]
     records_jsonpath = "$.['data']['Campaigns'][*]"
     replication_key = None
