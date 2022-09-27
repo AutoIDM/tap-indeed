@@ -12,7 +12,9 @@ keywords = [
     "meltano"
 ]
 license = "Apache 2.0"
-
+packages = [
+    {include = "tap_indeedsponsoredjobs"}
+]
 [tool.poetry.dependencies]
 python = "<3.11,>=3.7.1"
 requests = "^2.25.1"
