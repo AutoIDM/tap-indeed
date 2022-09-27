@@ -12,6 +12,9 @@ keywords = [
     "meltano"
 ]
 license = "Apache 2.0"
+packages = [
+    {include = "tap_indeedsponsoredjobs"}
+]
 
 [tool.poetry.dependencies]
 python = "<3.11,>=3.7.1"
@@ -39,4 +42,4 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
 # CLI declaration
-tap-indeedsponsoredjobs = 'tap_indeedsponsoredjobs.tap:TapIndeedSponsoredJobs.cli'
+tap-indeed = 'tap_indeedsponsoredjobs.tap:TapIndeedSponsoredJobs.cli'
