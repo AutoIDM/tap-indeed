@@ -3,6 +3,7 @@
 import requests
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List, Iterable
+from urllib.parse import urlparse
 
 from memoization import cached
 
@@ -11,6 +12,7 @@ from singer_sdk.streams import RESTStream
 from singer_sdk.pagination import BaseHATEOASPaginator, first, BaseAPIPaginator
 
 from tap_indeedsponsoredjobs.auth import IndeedSponsoredJobsAuthenticator
+from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 
 
 SCHEMAS_DIR = Path(__file__).parent / Path("./schemas")
@@ -22,9 +24,11 @@ class HATEOASPaginator(BaseHATEOASPaginator):
             response: API response object.
         """
         try: 
-            return first(
+            retval = first(
                     extract_jsonpath("$['meta']['links'][?(@['rel']=='next')]['href']", response.json())
                 )
+            raise Exception("Pagination not implemented yet, but we require pagination here. With perpage being so high this is surprising!")
+            return retval
         except StopIteration:
             return None
 
@@ -109,16 +113,14 @@ class IndeedSponsoredJobsStream(RESTStream):
         context = kwargs.pop("context") #Hack as we need a different authenticator based on context
         request = requests.Request(*args, **kwargs)
 
-        if self.authenticator:
-            if context and context.get["_sdc_employer_id"]:
-                authenticator = self.authenticator(context.get["_sdc_employer_id"])
-            else:
-                authenticator = self.authenticator
-            authenticator.authenticate_request(request)
+        if context and context["_sdc_employer_id"]:
+            authenticator = self.authenticator(employerid=context["_sdc_employer_id"])
+        else:
+            authenticator = self.authenticator()
+        authenticator.authenticate_request(request)
 
         return self.requests_session.prepare_request(request)
 
-    @property
     @cached
     def authenticator(self, employerid):
         """Return a new authenticator object."""
@@ -160,7 +162,7 @@ class IndeedSponsoredJobsStream(RESTStream):
         #if self.replication_key:
         #    params["sort"] = "asc"
         #    params["order_by"] = self.replication_key
-        params["perPage"]=10000000000
+        params["perPage"]=1000000000
         return params
 
     def prepare_request_payload(
@@ -182,3 +184,96 @@ class IndeedSponsoredJobsStream(RESTStream):
         """As needed, append or transform raw data to match expected structure."""
         # TODO: Delete this method if not needed.
         return row
+    
+    def validate_response(self, response: requests.Response) -> None:
+        """Validate HTTP response.
+
+        Checks for error status codes and wether they are fatal or retriable.
+
+        In case an error is deemed transient and can be safely retried, then this
+        method should raise an :class:`singer_sdk.exceptions.RetriableAPIError`.
+        By default this applies to 5xx error codes, along with values set in:
+        :attr:`~singer_sdk.RESTStream.extra_retry_statuses`
+
+        In case an error is unrecoverable raises a
+        :class:`singer_sdk.exceptions.FatalAPIError`. By default, this applies to
+        4xx errors, excluding values found in:
+        :attr:`~singer_sdk.RESTStream.extra_retry_statuses`
+
+        Tap developers are encouraged to override this method if their APIs use HTTP
+        status codes in non-conventional ways, or if they communicate errors
+        differently (e.g. in the response body).
+
+        .. image:: ../images/200.png
+
+        Args:
+            response: A `requests.Response`_ object.
+
+        Raises:
+            FatalAPIError: If the request is not retriable.
+            RetriableAPIError: If the request is retriable.
+
+        .. _requests.Response:
+            https://requests.readthedocs.io/en/latest/api/#requests.Response
+        """
+        if (
+            response.status_code in self.extra_retry_statuses
+            or 500 <= response.status_code < 600
+        ):
+            msg = self.response_error_message(response)
+            raise RetriableAPIError(msg, response)
+
+        elif 403 == response.status_code and response.json()["meta"]["errors"][0]["type"]=="INSUFFICIENT_SCOPE":
+            msg = self.response_error_message(response)
+            raise ScopeNotWorkingForEmployerID(msg)
+
+        elif 400 <= response.status_code < 500:
+            msg = self.response_error_message(response)
+            raise FatalAPIError(msg)
+    
+    def response_error_message(self, response: requests.Response) -> str:
+        """Build error message for invalid http statuses.
+
+        WARNING - Override this method when the URL path may contain secrets or PII
+
+        Args:
+            response: A `requests.Response`_ object.
+
+        Returns:
+            str: The error message
+        """
+        full_path = urlparse(response.url).path or self.path
+        if 400 <= response.status_code < 500:
+            error_type = "Client"
+        else:
+            error_type = "Server"
+
+        return (
+            f"{response.status_code} {error_type} Error: "
+            f"{response.reason} for path: {full_path}"
+            f"{response.text=}"
+        )
+    
+    def get_records(self, context: dict | None) -> Iterable[dict[str, Any]]:
+        """Return a generator of record-type dictionary objects.
+
+        Each record emitted should be a dictionary of property names to their values.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Yields:
+            One item per (possibly processed) record in the API.
+        """
+        try:
+            for record in self.request_records(context):
+                transformed_record = self.post_process(record, context)
+                if transformed_record is None:
+                    # Record filtered out during post_process()
+                    continue
+                yield transformed_record
+        except ScopeNotWorkingForEmployerID as e:
+            self.logger.warning(e)
+
+class ScopeNotWorkingForEmployerID(Exception):
+    """Raised if a target receives RECORD messages prior to a SCHEMA message."""

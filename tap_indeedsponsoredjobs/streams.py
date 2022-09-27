@@ -20,7 +20,6 @@ class Employers(IndeedSponsoredJobsStream):
     records_jsonpath = "$.['employers'][*]"  # Or override `parse_response`.
     url_base = "https://secure.indeed.com/v2/api"
 
-    @property
     @cached
     def authenticator(self) -> IndeedSponsoredJobsAuthenticator:
         """Return a new authenticator object."""
@@ -50,8 +49,9 @@ class Campaigns(IndeedSponsoredJobsStream):
     """Campaigns per Employer"""
     name = "campaigns"
     path = "/v1/campaigns"
+    partitions = [{"_sdc_status":"Active"},{"_sdc_status":"Paused"}]
     primary_keys = ["Id"]
-    records_jsonpath = "$.['Campaigns'][*]"
+    records_jsonpath = "$.['data']['Campaigns'][*]"
     replication_key = None
     parent_stream_type = Employers
     schema = th.PropertiesList(
@@ -60,10 +60,23 @@ class Campaigns(IndeedSponsoredJobsStream):
             th.Property("Status", th.StringType),
             th.Property("_sdc_employer_id", th.StringType),
             ).to_dict()
+    def get_url_params(
+        self, context: Optional[dict], next_page_token: Optional[Any]
+    ) -> Dict[str, Any]:
+        """Return a dictionary of values to be used in URL parameterization."""
+        params: dict = {}
+        #if next_page_token:
+        #    params["page"] = next_page_token
+        #if self.replication_key:
+        #    params["sort"] = "asc"
+        #    params["order_by"] = self.replication_key
+        params["perPage"]=1000000000
+        params["status"]="Active"
+        return params
     def get_child_context(self, record: dict, context: Optional[dict]) -> dict:
         """Return a context dictionary for child streams."""
         return {
-                "_sdc_employer_id": record["id"],
+                "_sdc_employer_id": context["_sdc_employer_id"],
                 "_sdc_campaign_id": record["Id"],
                 }
 
@@ -71,8 +84,8 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
     """Campaign Performance per Campaign"""
     name = "campaign_performance_stats"
     path = "/v1/campaigns/{_sdc_campaign_id}/stats"
-    primary_keys = ["Id"]
-    records_jsonpath = "$.['entries'][*]"
+    primary_keys = ["Id", "Date"]
+    records_jsonpath = "$.['data']['entries'][*]"
     replication_key = None
     parent_stream_type = Campaigns
     schema = th.PropertiesList(
@@ -91,6 +104,20 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
             th.Property("_sdc_employer_id", th.StringType),
             th.Property("_sdc_campaign_id", th.StringType),
             ).to_dict()
+    def get_url_params(
+        self, context: Optional[dict], next_page_token: Optional[Any]
+    ) -> Dict[str, Any]:
+        """Return a dictionary of values to be used in URL parameterization."""
+        params: dict = {}
+        #TODO call super
+        #if next_page_token:
+        #    params["page"] = next_page_token
+        #if self.replication_key:
+        #    params["sort"] = "asc"
+        #    params["order_by"] = self.replication_key
+        params["perPage"]=1000000000
+        params["startDate"]="2021-09-27"
+        return params
 
 class CampaignBudget(IndeedSponsoredJobsStream):
     """Campaign Budget per Campaign"""
@@ -125,8 +152,11 @@ class CampaignInfo(IndeedSponsoredJobsStream):
                                     th.Property("description", th.StringType),
                                     th.Property("objectiveType", th.StringType),
                                     )),
-            th.Property("NonSpendingReasons", th.ArrayType(th.StringType)),
-            th.Property("SpendingChannels", th.IntegerType),
+            th.Property("NonSpendingReasons", th.ArrayType(th.ObjectType(
+                                    th.Property("type", th.StringType),
+                                    th.Property("description", th.StringType),
+                                                ))),
+            th.Property("SpendingChannels", th.ArrayType(th.StringType)),
             th.Property("_sdc_employer_id", th.StringType),
             th.Property("_sdc_campaign_id", th.StringType),
             ).to_dict()
