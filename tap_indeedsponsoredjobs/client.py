@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import requests
+import json
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List, Iterable
 from urllib.parse import urlparse
@@ -17,6 +18,9 @@ from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 
 
 SCHEMAS_DIR = Path(__file__).parent / Path("./schemas")
+
+class ScopeNotWorkingForEmployerID(Exception):
+    """Raised if a target receives RECORD messages prior to a SCHEMA message."""
 
 class HATEOASPaginator(BaseHATEOASPaginator):
     def get_next_url(self, response):
@@ -224,13 +228,21 @@ class IndeedSponsoredJobsStream(RESTStream):
             msg = self.response_error_message(response)
             raise RetriableAPIError(msg, response)
 
-        elif 403 == response.status_code and response.json()["meta"]["errors"][0]["type"]=="INSUFFICIENT_SCOPE":
+        elif 403 == response.status_code and self.is_json(response.text) and response.json()["meta"]["errors"][0]["type"]=="INSUFFICIENT_SCOPE":
             msg = self.response_error_message(response)
-            raise ScopeNotWorkingForEmployerID(msg)
-
+            raise  ScopeNotWorkingForEmployerID(msg)
+        
         elif 400 <= response.status_code < 500:
-            msg = self.response_error_message(response)
-            raise FatalAPIError(msg)
+           msg = self.response_error_message(response)
+           raise FatalAPIError(msg)
+
+    def is_json(self, myjson):
+        try:
+            json.loads(myjson)
+        except ValueError as e:
+            return False
+        return True
+
     
     def response_error_message(self, response: requests.Response) -> str:
         """Build error message for invalid http statuses.
@@ -251,7 +263,7 @@ class IndeedSponsoredJobsStream(RESTStream):
 
         return (
             f"{response.status_code} {error_type} Error: "
-            f"{response.reason} for path: {full_path}"
+            f"{response.reason} for path: {full_path}. "
             f"{response.text=}"
         )
     
@@ -275,6 +287,3 @@ class IndeedSponsoredJobsStream(RESTStream):
                 yield transformed_record
         except ScopeNotWorkingForEmployerID as e:
             self.logger.warning(e)
-
-class ScopeNotWorkingForEmployerID(Exception):
-    """Raised if a target receives RECORD messages prior to a SCHEMA message."""
