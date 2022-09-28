@@ -3,9 +3,12 @@
 from __future__ import annotations
 import requests
 import json
+import logging
+import cloudscraper
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List, Iterable
 from urllib.parse import urlparse
+from collections import OrderedDict
 
 from memoization import cached
 
@@ -54,6 +57,44 @@ class IndeedSponsoredJobsStream(RESTStream):
     #records_jsonpath = "$[*]"  # Or override `parse_response`.
     #next_page_token_jsonpath = "$['meta']['links'][?(@['rel']=='next')]['href']"
     
+    def __init__(self, *args, **kwargs) -> None:
+        """Initialize the REST stream.
+
+        Args:
+            tap: Singer Tap this stream belongs to.
+            schema: JSON schema for records in this stream.
+            name: Name of this stream.
+            path: URL path for this entity stream.
+        """
+        super().__init__(*args, **kwargs)
+        self.requests_session = cloudscraper.create_scraper(sess=self.requests_session)
+
+    @property
+    def requests_session(self) -> requests.Session:
+        """Get requests session.
+
+        Returns:
+            The `requests.Session`_ object for HTTP requests.
+
+        .. _requests.Session:
+            https://requests.readthedocs.io/en/latest/api/#request-sessions
+        """
+        if not self._requests_session:
+            self._requests_session = cloudscraper.create_scraper()
+        return self._requests_session
+    
+    @requests_session.setter
+    def requests_session(self, session):
+        """Get requests session.
+
+        Returns:
+            The `requests.Session`_ object for HTTP requests.
+
+        .. _requests.Session:
+            https://requests.readthedocs.io/en/latest/api/#request-sessions
+        """
+        self._requests_session = session
+
     def get_new_paginator(self) -> BaseAPIPaginator:
         """Get a fresh paginator for this API endpoint.
 
@@ -93,7 +134,7 @@ class IndeedSponsoredJobsStream(RESTStream):
             json=request_data,
             context=context,
         )
-    
+
     def build_prepared_request(
         self,
         *args: Any,
@@ -140,16 +181,16 @@ class IndeedSponsoredJobsStream(RESTStream):
         return headers
 
     def get_next_page_token(
-        self, response: requests.Response, previous_token: Optional[Any]
-    ) -> Optional[Any]:
+            self, response: requests.Response, previous_token: Optional[Any]
+            ) -> Optional[Any]:
         """Return a token for identifying next page or None if no more pages."""
         # TODO: If pagination is required, return a token which can be used to get the
         #       next page. If this is the final page, return "None" to end the
         #       pagination loop.
         if self.next_page_token_jsonpath:
             all_matches = extract_jsonpath(
-                self.next_page_token_jsonpath, response.json()
-            )
+                    self.next_page_token_jsonpath, response.json()
+                    )
             first_match = next(iter(all_matches), None)
             next_page_token = first_match
         else:
@@ -158,8 +199,8 @@ class IndeedSponsoredJobsStream(RESTStream):
         return next_page_token
 
     def get_url_params(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Dict[str, Any]:
+            self, context: Optional[dict], next_page_token: Optional[Any]
+            ) -> Dict[str, Any]:
         """Return a dictionary of values to be used in URL parameterization."""
         params: dict = {}
         #if next_page_token:
@@ -171,8 +212,8 @@ class IndeedSponsoredJobsStream(RESTStream):
         return params
 
     def prepare_request_payload(
-        self, context: Optional[dict], next_page_token: Optional[Any]
-    ) -> Optional[dict]:
+            self, context: Optional[dict], next_page_token: Optional[Any]
+            ) -> Optional[dict]:
         """Prepare the data payload for the REST API request.
 
         By default, no payload will be sent (return None).
@@ -189,7 +230,7 @@ class IndeedSponsoredJobsStream(RESTStream):
         """As needed, append or transform raw data to match expected structure."""
         # TODO: Delete this method if not needed.
         return row
-    
+
     def validate_response(self, response: requests.Response) -> None:
         """Validate HTTP response.
 
@@ -231,7 +272,7 @@ class IndeedSponsoredJobsStream(RESTStream):
         elif 403 == response.status_code and self.is_json(response.text) and response.json()["meta"]["errors"][0]["type"]=="INSUFFICIENT_SCOPE":
             msg = self.response_error_message(response)
             raise  ScopeNotWorkingForEmployerID(msg)
-        
+
         elif 400 <= response.status_code < 500:
            msg = self.response_error_message(response)
            raise FatalAPIError(msg)
@@ -243,7 +284,7 @@ class IndeedSponsoredJobsStream(RESTStream):
             return False
         return True
 
-    
+
     def response_error_message(self, response: requests.Response) -> str:
         """Build error message for invalid http statuses.
 
@@ -266,7 +307,7 @@ class IndeedSponsoredJobsStream(RESTStream):
             f"{response.reason} for path: {full_path}. "
             f"{response.text=}"
         )
-    
+
     def get_records(self, context: dict | None) -> Iterable[dict[str, Any]]:
         """Return a generator of record-type dictionary objects.
 
