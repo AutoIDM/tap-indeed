@@ -115,7 +115,7 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
         #    params["sort"] = "asc"
         #    params["order_by"] = self.replication_key
         params["perPage"]=1000000000
-        params["startDate"]="2021-09-27"
+        params["startDate"]=self.config["start_date"]
         return params
 
 class CampaignBudget(IndeedSponsoredJobsStream):

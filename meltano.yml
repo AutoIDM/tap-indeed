@@ -4,9 +4,10 @@ project_id: tap-indeedsponsoredjobs
 elt.buffer_size: 104857600
 plugins:
   extractors:
-  - name: tap-indeedsponsoredjobs
+  - name: tap-indeed
     namespace: tap_indeedsponsoredjobs
     pip_url: -e .
+    executable: tap-indeedsponsoredjobs
     capabilities:
       #- state
     - catalog

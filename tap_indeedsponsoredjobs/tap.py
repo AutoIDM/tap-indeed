@@ -1,7 +1,7 @@
 """IndeedSponsoredJobs tap class."""
 
 from typing import List
-
+import datetime
 from singer_sdk import Tap, Stream
 from singer_sdk import typing as th  # JSON schema typing helpers
 from tap_indeedsponsoredjobs.streams import (
@@ -36,6 +36,13 @@ class TapIndeedSponsoredJobs(Tap):
             th.StringType,
             required=True,
             description="client_secret from https://secure.indeed.com/account/apikeys",
+        ),
+        th.Property(
+            "start_date",
+            th.StringType,
+            required=True,
+            default=str(datetime.date.today()-datetime.timedelta(days=365)),
+            description="Defaults to today minus 365, only used for the stats endpoint",
         ),
     ).to_dict()
 
