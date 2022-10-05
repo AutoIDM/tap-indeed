@@ -1,9 +1,12 @@
 """IndeedSponsoredJobs Authentication."""
 
 import requests
+import backoff
+import logging
 from singer_sdk.authenticators import OAuthAuthenticator
 from singer_sdk.streams import RESTStream
 from singer_sdk.helpers._util import utc_now
+from typing import Callable, Generator
 
 
 class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
@@ -93,7 +96,8 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         request_time = utc_now()
         auth_request_payload = self.oauth_request_payload
         #Using a shared session with the Stream here
-        token_response = self._session.post(self.auth_endpoint, data=auth_request_payload, headers={"User-Agent":self._user_agent})
+        decorated_request = self.request_decorator(self._session.post)
+        token_response = decorated_request(self.auth_endpoint, data=auth_request_payload, headers={"User-Agent":self._user_agent})
         try:
             token_response.raise_for_status()
             self.logger.info("OAuth authorization attempt was successful.")
@@ -111,3 +115,48 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
                 "expires."
             )
         self.last_refreshed = request_time
+    
+    def request_decorator(self, func: Callable) -> Callable:
+        """Instantiate a decorator for handling request failures.
+
+        Uses a wait generator defined in `backoff_wait_generator` to
+        determine backoff behaviour. Try limit is defined in
+        `backoff_max_tries`, and will trigger the event defined in
+        `backoff_handler` before retrying. Developers may override one or
+        all of these methods to provide custom backoff or retry handling.
+
+        Args:
+            func: Function to decorate.
+
+        Returns:
+            A decorated method.
+        """
+        decorator: Callable = backoff.on_exception(
+            self.backoff_wait_generator,
+            (
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.ConnectionError,
+            ),
+            max_tries=10,
+            on_backoff=self.backoff_handler,
+        )(func)
+        return decorator
+
+    def backoff_wait_generator(self):
+        return backoff.expo(factor=2)
+	
+    def backoff_handler(self, details) -> None:
+        """Adds additional behaviour prior to retry.
+
+          By default will log out backoff details, developers can override
+          to extend or change this behaviour.
+
+          Args:
+              details: backoff invocation details
+                  https://github.com/litl/backoff#event-handlers
+          """
+        logging.error(
+            "Backing off {wait:0.1f} seconds after {tries} tries "
+            "calling function {target} with args {args} and kwargs "
+            "{kwargs}".format(**details)
+        )
