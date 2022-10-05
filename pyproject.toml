@@ -16,6 +16,7 @@ packages = [
     {include = "tap_indeedsponsoredjobs"}
 ]
 [tool.poetry.dependencies]
+backoff = "^2.2.0"
 python = "<3.11,>=3.7.1"
 requests = "^2.25.1"
 singer-sdk = "^0.11.0"
