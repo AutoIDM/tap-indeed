@@ -85,12 +85,13 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
     path = "/v1/campaigns/{_sdc_campaign_id}/stats"
     primary_keys = ["Id", "Date"]
     records_jsonpath = "$.['data']['entries'][*]"
-    replication_key = None
+    replication_key = "Date"
+    is_sorted = False
     parent_stream_type = Campaigns
     schema = th.PropertiesList(
             th.Property("Name", th.StringType),
             th.Property("Id", th.StringType),
-            th.Property("Date", th.StringType),
+            th.Property("Date", th.DateType),
             th.Property("Clicks", th.IntegerType),
             th.Property("Impressions", th.IntegerType),
             th.Property("Conversions", th.IntegerType),
@@ -115,7 +116,9 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
         #    params["sort"] = "asc"
         #    params["order_by"] = self.replication_key
         params["perPage"]=1000000000
-        params["startDate"]=self.config["start_date"]
+        #params["startDate"]=self.config["start_date"]
+        params["startDate"]=self.get_starting_replication_key_value(context)
+
         return params
 
 class CampaignBudget(IndeedSponsoredJobsStream):
