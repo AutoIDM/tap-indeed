@@ -1,6 +1,7 @@
 """Stream type classes for tap-indeedsponsoredjobs."""
 
 import csv
+from datetime import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
@@ -86,17 +87,25 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         th.Property("Apply Starts", th.StringType),
         th.Property("Organic Apply Starts", th.StringType),
         th.Property("_sdc_employer_id", th.StringType),
-        th.Property("_sdc_start_date", th.DateType),
-        th.Property("_sdc_end_date", th.DateType),
-        th.Property("_sdc_employer_id", th.StringType),
-        th.Property("_sdc_campaign_id", th.StringType),
+        th.Property("_sdc_start_date", th.DateTimeType),
+        th.Property("_sdc_end_date", th.DateTimeType),
+        th.Property("_sdc_line_number", th.StringType),
     ).to_dict()
 
     def get_url_params(
-        self, context: Optional[dict], next_page_token: Optional[Any]
+        self,
+        context: Optional[dict],
+        next_page_token: Optional[Any],
     ) -> Dict[str, Any]:
         """Return a dictionary of values to be used in URL parameterization."""
-        start_date = pendulum.parse(self.get_starting_replication_key_value(context))
+        # When start date is provided we're iterating through reports for each day
+        # Hacky as we should use native replication key interfaces here but the
+        # API didn't work well here due to us doing some custom logic for Reports / Dates
+        if context is not None and context.get("_sdc_start_date") is not None:
+            start_date = context["_sdc_start_date"]
+            start_date = pendulum.parse(start_date)
+        else:
+            start_date = self.get_starting_timestamp(context)
         end_date = start_date.add(days=1)
         params: dict = {}
         params["startDate"] = start_date.format("YYYY-MM-DD")
@@ -108,7 +117,7 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
     def get_records(self, context):
         """Return a generator of record-type dictionary objects.
 
-        Each record emitted should be a dictionary of property names to their values.
+        To get all reports we must iterate over each day individually according to the Indeed API
 
         Args:
             context: Stream partition or context dictionary.
@@ -116,7 +125,35 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         Yields:
             One item per (possibly processed) record in the API.
         """
-        # Have Docusign generate a report
+        # Initial Dates
+        start_date = self.get_url_params(context, None)["startDate"]
+        start_date = pendulum.parse(start_date)
+        # Stop when the start_date is set to today
+        while start_date.date() != pendulum.today().date():
+            yield from self.get_single_report(context)
+            context["_sdc_start_date"] = start_date.add(days=1).format("YYYY-MM-DD")
+            start_date = self.get_url_params(context, None)["startDate"]
+            # Easier to play with startdate if it's in the type pendulum.datetime.Datetime
+            start_date = pendulum.parse(start_date)
+            end_date = self.get_url_params(context, None)["endDate"]
+            self.logger.info(
+                f"We have { pendulum.today().diff(start_date).in_days() } day(s) left. Fetching {start_date.date()} to {end_date} next."
+            )
+        # State hack to remove this from the context partition, so we can save without hitting:
+        # ValueError: State file contains duplicate entries for partition: {state_partition_context}.
+        context.pop("_sdc_start_date")
+
+    def get_single_report(self, context):
+        """Get a single report for a given date range.
+
+        Args:
+            context: Context dictionary.
+            start_date: The start date for the report.
+            end_date: The end date for the report.
+
+        Returns:
+            Nothing
+        """
         report_pointer_record = None
         for record in self.request_records(context):
             if report_pointer_record is None:
@@ -131,10 +168,9 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         self.path = report_pointer_record["data"]["location"]
 
         for record in self.request_records(context):
-            record["_sdc_line_number"] = record.line_num
             record["_sdc_employer_id"] = context["_sdc_employer_id"]
-            record["_sdc_start_date"] = self.get_url_params(context)["startDate"]
-            record["_sdc_end_date"] = self.get_url_params(context)["endDate"]
+            record["_sdc_start_date"] = self.get_url_params(context, None)["startDate"]
+            record["_sdc_end_date"] = self.get_url_params(context, None)["endDate"]
             yield record
 
         # Set path back for next request
@@ -164,9 +200,9 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         if self.path == "/v1/stats":
             yield response.json()
         else:
-            breakpoint()
             csv_data = csv.DictReader(response.text.splitlines())
             for record in csv_data:
+                record["_sdc_line_number"] = str(csv_data.line_num)
                 yield record
 
 
