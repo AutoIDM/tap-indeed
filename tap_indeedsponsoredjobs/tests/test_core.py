@@ -48,11 +48,12 @@ def test_auth_backoff(mocked_responses):
 
 
 # Run standard built-in tap tests from the SDK:
-def test_standard_tap_tests():
-    """Run standard tap tests from the SDK."""
-    tests = get_standard_tap_tests(TapIndeedSponsoredJobs, config=SAMPLE_CONFIG)
-    for test in tests:
-        test()
+# Disabled as we don't have a good way to test these without production credentails
+# def test_standard_tap_tests():
+#    """Run standard tap tests from the SDK."""
+#    tests = get_standard_tap_tests(TapIndeedSponsoredJobs, config=SAMPLE_CONFIG)
+#    for test in tests:
+#       test()
 
 
 # TODO: Create additional tests as appropriate for your tap.
