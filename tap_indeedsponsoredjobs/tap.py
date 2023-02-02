@@ -9,7 +9,9 @@ from singer_sdk import typing as th  # JSON schema typing helpers
 from tap_indeedsponsoredjobs.streams import (
     CampaignBudget,
     CampaignInfo,
+    CampaignJobDetails,
     CampaignPerformanceStats,
+    CampaignProperties,
     Campaigns,
     Employers,
     EmployerStatsReport,
@@ -18,6 +20,8 @@ from tap_indeedsponsoredjobs.streams import (
 STREAM_TYPES = [
     Employers,
     Campaigns,
+    CampaignProperties,
+    CampaignJobDetails,
     CampaignBudget,
     CampaignInfo,
     CampaignPerformanceStats,

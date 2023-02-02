@@ -341,3 +341,40 @@ class CampaignInfo(IndeedSponsoredJobsStream):
         th.Property("_sdc_employer_id", th.StringType),
         th.Property("_sdc_campaign_id", th.StringType),
     ).to_dict()
+
+
+class CampaignProperties(IndeedSponsoredJobsStream):
+    """Campaign Properties per Campaign"""
+
+    name = "campaign_property"
+    path = "/v1/campaigns/{_sdc_campaign_id}/properties"
+    primary_keys = ["_sdc_campaign_id"]
+    records_jsonpath = "$.['data']"
+    replication_key = None
+    parent_stream_type = Campaigns
+    schema = th.PropertiesList(
+        th.Property("dateCreated", th.DateType),
+        th.Property("firstSpendDate", th.DateType),
+        th.Property("lastSpendDate", th.DateType),
+        th.Property("_sdc_campaign_id", th.StringType),
+        th.Property("_sdc_employer_id", th.StringType),
+    ).to_dict()
+
+
+class CampaignJobDetails(IndeedSponsoredJobsStream):
+    """Job Details per Campaign"""
+
+    name = "campaign_job_detail"
+    path = "/v1/campaigns/{_sdc_campaign_id}/jobDetails"
+    primary_keys = ["_sdc_campaign_id", "jobKey", "_sdc_employer_id", "refNum"]
+    records_jsonpath = "$.['data']['entries'][*]"
+    replication_key = None
+    parent_stream_type = Campaigns
+    schema = th.PropertiesList(
+        th.Property("jobKey", th.StringType),
+        th.Property("refNum", th.StringType),
+        th.Property("title", th.StringType),
+        th.Property("location", th.StringType),
+        th.Property("_sdc_campaign_id", th.StringType),
+        th.Property("_sdc_employer_id", th.StringType),
+    ).to_dict()
