@@ -1,11 +1,16 @@
 """Stream type classes for tap-indeedsponsoredjobs."""
 
+import csv
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
+import pendulum
+import requests
 from memoization import cached
+from requests import PreparedRequest
 from singer_sdk import typing as th  # JSON Schema typing helpers
 from singer_sdk.authenticators import OAuthAuthenticator
+from singer_sdk.pagination import BaseAPIPaginator, SimpleHeaderPaginator
 
 from tap_indeedsponsoredjobs.auth import IndeedSponsoredJobsAuthenticator
 from tap_indeedsponsoredjobs.client import IndeedSponsoredJobsStream
@@ -58,11 +63,12 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
     """
 
     name = "employer_stats_report"
-    path = "/v1/campaigns/stats"
+    path = "/v1/stats"
     primary_keys = ["_sdc_employer_id", "_sdc_start_date", "_sdc_line_number"]
     replication_key = "_sdc_start_date"
     is_sorted = True
     parent_stream_type = Employers
+    records_jsonpath = "$.[*]"
     # We assumed version 6
     schema = th.PropertiesList(
         th.Property("Campaign ID", th.StringType),
@@ -80,6 +86,9 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         th.Property("Apply Starts", th.StringType),
         th.Property("Organic Apply Starts", th.StringType),
         th.Property("_sdc_employer_id", th.StringType),
+        th.Property("_sdc_start_date", th.DateType),
+        th.Property("_sdc_end_date", th.DateType),
+        th.Property("_sdc_employer_id", th.StringType),
         th.Property("_sdc_campaign_id", th.StringType),
     ).to_dict()
 
@@ -87,11 +96,78 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
         """Return a dictionary of values to be used in URL parameterization."""
+        start_date = pendulum.parse(self.get_starting_replication_key_value(context))
+        end_date = start_date.add(days=1)
         params: dict = {}
-        params["startDate"] = self.get_starting_replication_key_value(context)
-        params["endDate"] = self.get_starting_replication_key_value(context) + 1
+        params["startDate"] = start_date.format("YYYY-MM-DD")
+        params["endDate"] = end_date.format("YYYY-MM-DD")
+        params["v"] = "6"  # Report version 6
 
         return params
+
+    def get_records(self, context):
+        """Return a generator of record-type dictionary objects.
+
+        Each record emitted should be a dictionary of property names to their values.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Yields:
+            One item per (possibly processed) record in the API.
+        """
+        # Have Docusign generate a report
+        report_pointer_record = None
+        for record in self.request_records(context):
+            if report_pointer_record is None:
+                report_pointer_record = record
+            else:
+                raise Exception(
+                    "More than one record for a report is returned. This should not happen."
+                )
+
+        # Get data from th genearted report
+        # Update URL
+        self.path = report_pointer_record["data"]["location"]
+
+        for record in self.request_records(context):
+            record["_sdc_line_number"] = record.line_num
+            record["_sdc_employer_id"] = context["_sdc_employer_id"]
+            record["_sdc_start_date"] = self.get_url_params(context)["startDate"]
+            record["_sdc_end_date"] = self.get_url_params(context)["endDate"]
+            yield record
+
+        # Set path back for next request
+        self.path = "/v1/stats"
+
+    def get_new_paginator(self) -> BaseAPIPaginator:
+        """No Paginator needed
+
+        Returns:
+            A paginator instance.
+        """
+        return SimpleHeaderPaginator("NOOP_Paginator")
+
+    def parse_response(self, response: requests.Response) -> Iterable[dict]:
+        """Parse the response and return an iterator of result records.
+
+        Args:
+            response: A raw `requests.Response`_ object.
+
+        Yields:
+            One item for every item found in the response.
+
+        .. _requests.Response:
+            https://requests.readthedocs.io/en/latest/api/#requests.Response
+        """
+
+        if self.path == "/v1/stats":
+            yield response.json()
+        else:
+            breakpoint()
+            csv_data = csv.DictReader(response.text.splitlines())
+            for record in csv_data:
+                yield record
 
 
 class Campaigns(IndeedSponsoredJobsStream):

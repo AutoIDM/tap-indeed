@@ -19,7 +19,7 @@ plugins:
     - name: client_secret
       kind: password
     select:
-    - '*.*'
+    - 'employer_stats_report.*'
   loaders:
   - name: target-jsonl
     variant: andyh1203
