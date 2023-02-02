@@ -1,27 +1,37 @@
 """IndeedSponsoredJobs tap class."""
 
-from typing import List
 import datetime
-from singer_sdk import Tap, Stream
+from typing import List
+
+from singer_sdk import Stream, Tap
 from singer_sdk import typing as th  # JSON schema typing helpers
+
 from tap_indeedsponsoredjobs.streams import (
-    Employers,
-    Campaigns,
     CampaignBudget,
     CampaignInfo,
+    CampaignJobDetails,
     CampaignPerformanceStats,
+    CampaignProperties,
+    Campaigns,
+    Employers,
+    EmployerStatsReport,
 )
+
 STREAM_TYPES = [
     Employers,
     Campaigns,
+    CampaignProperties,
+    CampaignJobDetails,
     CampaignBudget,
     CampaignInfo,
     CampaignPerformanceStats,
+    EmployerStatsReport,
 ]
 
 
 class TapIndeedSponsoredJobs(Tap):
     """IndeedSponsoredJobs tap class."""
+
     name = "tap-indeedsponsoredjobs"
 
     config_jsonschema = th.PropertiesList(
@@ -41,7 +51,7 @@ class TapIndeedSponsoredJobs(Tap):
             "start_date",
             th.StringType,
             required=True,
-            default=str(datetime.date.today()-datetime.timedelta(days=365)),
+            default=str(datetime.date.today() - datetime.timedelta(days=365)),
             description="Defaults to today minus 365, only used for the stats endpoint",
         ),
     ).to_dict()

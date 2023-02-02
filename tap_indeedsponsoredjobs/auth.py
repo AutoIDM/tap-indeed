@@ -1,28 +1,28 @@
 """IndeedSponsoredJobs Authentication."""
 
-import requests
-import backoff
 import logging
-from urllib.parse import urlparse
-from singer_sdk.authenticators import OAuthAuthenticator
-from singer_sdk.streams import RESTStream
-from singer_sdk.helpers._util import utc_now
-from requests import Request
-from requests import Session
 from typing import Callable, Generator
+from urllib.parse import urlparse
+
+import backoff
+import requests
+from requests import Request, Session
+from singer_sdk.authenticators import OAuthAuthenticator
 from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
+from singer_sdk.helpers._util import utc_now
+from singer_sdk.streams import RESTStream
 
 
 class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
     """Authenticator class for IndeedSponsoredJobs."""
-    
+
     def __init__(
         self,
         stream: RESTStream,
         auth_endpoint,
         oauth_scopes,
         default_expiration=None,
-        employerid=None
+        employerid=None,
     ) -> None:
         """Create a new authenticator.
 
@@ -32,9 +32,16 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
             oauth_scopes: API password.
             default_expiration: Default token expiry in seconds.
         """
-        super().__init__(stream=stream, auth_endpoint=auth_endpoint, oauth_scopes=oauth_scopes, default_expiration=default_expiration)
+        super().__init__(
+            stream=stream,
+            auth_endpoint=auth_endpoint,
+            oauth_scopes=oauth_scopes,
+            default_expiration=default_expiration,
+        )
         self._employerid = employerid
-        self._user_agent = stream.http_headers["User-Agent"] #Cloud Flare is blocking us with a 1020 error.
+        self._user_agent = stream.http_headers[
+            "User-Agent"
+        ]  # Cloud Flare is blocking us with a 1020 error.
         self._session = stream.requests_session
 
     @property
@@ -42,21 +49,21 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         """Employer ID so we can auth as each client individually
 
         Returns:
-            employerid 
+            employerid
         """
         return self._employerid
 
     @property
     def oauth_request_body(self) -> dict:
         """Define the OAuth request body for the IndeedSponsoredJobs API."""
-        oauth_request_body =  {
-            'scope': self.oauth_scopes,
-            'client_id': self.config["client_id"],
-            'client_secret': self.config["client_secret"],
-            'grant_type': 'client_credentials',
+        oauth_request_body = {
+            "scope": self.oauth_scopes,
+            "client_id": self.config["client_id"],
+            "client_secret": self.config["client_secret"],
+            "grant_type": "client_credentials",
         }
         if self.employerid:
-            oauth_request_body["employer"]=self.employerid
+            oauth_request_body["employer"] = self.employerid
         return oauth_request_body
 
     @classmethod
@@ -66,7 +73,7 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
             auth_endpoint="https://apis.indeed.com/oauth/v2/tokens",
             oauth_scopes="employer.advertising.subaccount.read employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read employer_access",
         )
-    
+
     @classmethod
     def create_singleemployerauth_for_stream(cls, stream, employerid):
         return cls(
@@ -75,7 +82,7 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
             oauth_scopes="employer.advertising.subaccount.read employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read",
             employerid=employerid,
         )
-    
+
     @property
     def auth_headers(self) -> dict:
         """Return a dictionary of auth headers to be applied.
@@ -90,7 +97,7 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         result = super().auth_headers
         result["Authorization"] = f"Bearer {self.access_token}"
         return result
-    
+
     def update_access_token(self) -> None:
         """Update `access_token` along with: `last_refreshed` and `expires_in`.
 
@@ -99,10 +106,15 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         """
         request_time = utc_now()
         auth_request_payload = self.oauth_request_payload
-        #Back off for Auth requsts as we do so many sometimes they fail with Docusign
+        # Back off for Auth requsts as we do so many sometimes they fail with Docusign
         decorated_request = self.request_decorator(self.req)
-        #Using a shared session with the Stream here
-        token_response = decorated_request(session=self._session, url=self.auth_endpoint, data=auth_request_payload, headers={"User-Agent":self._user_agent})
+        # Using a shared session with the Stream here
+        token_response = decorated_request(
+            session=self._session,
+            url=self.auth_endpoint,
+            data=auth_request_payload,
+            headers={"User-Agent": self._user_agent},
+        )
         self.logger.info("OAuth authorization attempt was successful.")
         token_json = token_response.json()
         self.access_token = token_json["access_token"]
@@ -114,13 +126,12 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
                 "expires."
             )
         self.last_refreshed = request_time
-    
+
     def req(self, session: Session, url, data, headers) -> requests.Response:
         response = session.post(url=url, data=data, headers=headers)
         self.validate_response(response)
         return response
 
-    
     def request_decorator(self, func: Callable) -> Callable:
         """Instantiate a decorator for handling request failures.
 
@@ -150,23 +161,23 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
 
     def backoff_wait_generator(self):
         return backoff.expo(factor=2)
-	
+
     def backoff_handler(self, details) -> None:
         """Adds additional behaviour prior to retry.
 
-          By default will log out backoff details, developers can override
-          to extend or change this behaviour.
+        By default will log out backoff details, developers can override
+        to extend or change this behaviour.
 
-          Args:
-              details: backoff invocation details
-                  https://github.com/litl/backoff#event-handlers
-          """
+        Args:
+            details: backoff invocation details
+                https://github.com/litl/backoff#event-handlers
+        """
         logging.error(
             "Backing off {wait:0.1f} seconds after {tries} tries "
             "calling function {target} with args {args} and kwargs "
             "{kwargs}".format(**details)
         )
-    
+
     def validate_response(self, response: requests.Response) -> None:
         """Validate HTTP response.
 
@@ -199,15 +210,17 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
             https://requests.readthedocs.io/en/latest/api/#requests.Response
         """
         if (
-            #400 Code because we get these randomly from Docusign
-            response.status_code == 400 or (response.status_code >= 500 <= response.status_code < 600)
+            # 400 Code because we get these randomly from Docusign
+            response.status_code == 400
+            or (response.status_code >= 500 <= response.status_code < 600)
         ):
             msg = self.response_error_message(response)
             raise RetriableAPIError(msg, response)
 
         elif 400 <= response.status_code < 500:
-           msg = self.response_error_message(response)
-           raise FatalAPIError(msg)
+            msg = self.response_error_message(response)
+            raise FatalAPIError(msg)
+
     def response_error_message(self, response: requests.Response) -> str:
         """Build error message for invalid http statuses.
 
