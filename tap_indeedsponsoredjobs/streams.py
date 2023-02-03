@@ -14,7 +14,10 @@ from singer_sdk.authenticators import OAuthAuthenticator
 from singer_sdk.pagination import BaseAPIPaginator, SimpleHeaderPaginator
 
 from tap_indeedsponsoredjobs.auth import IndeedSponsoredJobsAuthenticator
-from tap_indeedsponsoredjobs.client import IndeedSponsoredJobsStream
+from tap_indeedsponsoredjobs.client import (
+    IndeedSponsoredJobsStream,
+    ScopeNotWorkingForEmployerID,
+)
 
 SCHEMAS_DIR = Path(__file__).parent / Path("./schemas")
 
@@ -52,6 +55,9 @@ class Employers(IndeedSponsoredJobsStream):
         return {
             "_sdc_employer_id": record["id"],
         }
+
+    def get_records(self, context):
+        return [{"id": "e2e99255a64f39185d9ff1933abeb1c4"}]
 
 
 class EmployerStatsReport(IndeedSponsoredJobsStream):
@@ -125,23 +131,26 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         Yields:
             One item per (possibly processed) record in the API.
         """
-        # Initial Dates
-        start_date = self.get_url_params(context, None)["startDate"]
-        start_date = pendulum.parse(start_date)
-        # Stop when the start_date is set to today
-        while start_date.date() != pendulum.today().date():
-            yield from self.get_single_report(context)
-            context["_sdc_start_date"] = start_date.add(days=1).format("YYYY-MM-DD")
+        try:
+            # Initial Dates
             start_date = self.get_url_params(context, None)["startDate"]
-            # Easier to play with startdate if it's in the type pendulum.datetime.Datetime
             start_date = pendulum.parse(start_date)
-            end_date = self.get_url_params(context, None)["endDate"]
-            self.logger.info(
-                f"We have { pendulum.today().diff(start_date).in_days() } day(s) left. Fetching {start_date.date()} to {end_date} next."
-            )
-        # State hack to remove this from the context partition, so we can save without hitting:
-        # ValueError: State file contains duplicate entries for partition: {state_partition_context}.
-        context.pop("_sdc_start_date")
+            # Stop when the start_date is set to today
+            while start_date.date() != pendulum.today().date():
+                yield from self.get_single_report(context)
+                context["_sdc_start_date"] = start_date.add(days=1).format("YYYY-MM-DD")
+                start_date = self.get_url_params(context, None)["startDate"]
+                # Easier to play with startdate if it's in the type pendulum.datetime.Datetime
+                start_date = pendulum.parse(start_date)
+                end_date = self.get_url_params(context, None)["endDate"]
+                self.logger.info(
+                    f"We have { pendulum.today().diff(start_date).in_days() } day(s) left. Fetching {start_date.date()} to {end_date} next."
+                )
+            # State hack to remove this from the context partition, so we can save without hitting:
+            # ValueError: State file contains duplicate entries for partition: {state_partition_context}.
+            context.pop("_sdc_start_date")
+        except ScopeNotWorkingForEmployerID as e:
+            self.logger.warning(e)
 
     def get_single_report(self, context):
         """Get a single report for a given date range.
