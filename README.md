@@ -27,6 +27,14 @@ A full list of supported settings and capabilities is available by running: `tap
 
 Built with the [Meltano Tap SDK](https://sdk.meltano.com) for Singer Taps.
 
+###  INSUFFICIENT SCOPE Error
+Something you may see an error like
+```
+ WARNING:tap-indeedsponsoredjobs:403 Client Error: Forbidden for path: /ads/v1/campaigns. response.text='{"meta":{"status":403,"errors":[{"type":"INSUFFICIENT_SCOPE","description":"The access token you provided doesn\'t have permission to access this API. Required scopes missing: employer.advertising.campaign.read"}],"rootLocation":"https://apis.indeed.com/ads","perPage":null,"links":null},"data":null}' 
+ ```
+
+ This is expected and is an error we get with some employer's. We are properly requesting the right scopes. This may be an error with Indeed's API. It may be somethign else, but most records work so ignoring these seems correct.
+
 ## Installation
 
 Install from PyPi:
