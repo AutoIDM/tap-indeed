@@ -342,22 +342,3 @@ class IndeedSponsoredJobsStream(RESTStream):
                 yield transformed_record
         except ScopeNotWorkingForEmployerID as e:
             self.logger.warning(e)
-
-    def get_records(self, context: dict | None) -> Iterable[dict[str, Any]]:
-        """Return a generator of record-type dictionary objects.
-
-        Each record emitted should be a dictionary of property names to their values.
-
-        Args:
-            context: Stream partition or context dictionary.
-
-        Yields:
-            One item per (possibly processed) record in the API.
-        """
-
-        for record in self.request_records(context):
-            transformed_record = self.post_process(record, context)
-            if transformed_record is None:
-                # Record filtered out during post_process()
-                continue
-            yield transformed_record
