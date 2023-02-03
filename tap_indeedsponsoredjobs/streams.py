@@ -56,9 +56,6 @@ class Employers(IndeedSponsoredJobsStream):
             "_sdc_employer_id": record["id"],
         }
 
-    def get_records(self, context):
-        return [{"id": "e2e99255a64f39185d9ff1933abeb1c4"}]
-
 
 class EmployerStatsReport(IndeedSponsoredJobsStream):
     """Employer Stats Report.
