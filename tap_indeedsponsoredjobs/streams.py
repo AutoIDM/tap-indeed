@@ -1,6 +1,7 @@
 """Stream type classes for tap-indeedsponsoredjobs."""
 
 import csv
+import datetime
 from datetime import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
@@ -251,7 +252,7 @@ class Campaigns(IndeedSponsoredJobsStream):
 
 
 class CampaignPerformanceStats(IndeedSponsoredJobsStream):
-    """Campaign Performance per Campaign"""
+    """Campaign Performance per Campaign. Note we limit the data set to be one year old."""
 
     name = "campaign_performance_stats"
     path = "/v1/campaigns/{_sdc_campaign_id}/stats"
@@ -282,16 +283,22 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
     ) -> Dict[str, Any]:
         """Return a dictionary of values to be used in URL parameterization."""
         params: dict = {}
-        # TODO call super
-        # if next_page_token:
-        #    params["page"] = next_page_token
-        # if self.replication_key:
-        #    params["sort"] = "asc"
-        #    params["order_by"] = self.replication_key
         params["perPage"] = 1000000000
-        # params["startDate"]=self.config["start_date"]
-        params["startDate"] = self.get_starting_replication_key_value(context)
 
+        start_date = self.get_starting_replication_key_value(context)
+        start_date = pendulum.parse(start_date)
+
+        days_from_today = pendulum.today().diff(start_date).in_days()
+        if days_from_today > 365:
+            start_date = pendulum.today().subtract(days=365)
+            self.logger.info(
+                f"We have {days_from_today} day(s) left. "
+                "The campaign stats endpoint only allows "
+                "a maximum of 365 days of data. "
+                f"We are modifiying the start_date to be {start_date}"
+            )
+
+        params["startDate"] = start_date.format("YYYY-MM-DD")
         return params
 
 

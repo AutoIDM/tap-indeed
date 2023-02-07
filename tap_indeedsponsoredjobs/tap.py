@@ -52,7 +52,11 @@ class TapIndeedSponsoredJobs(Tap):
             th.StringType,
             required=True,
             default=str(datetime.date.today() - datetime.timedelta(days=365)),
-            description="Defaults to today minus 365, only used for the stats endpoint",
+            description=(
+                "Defaults to today minus 365, only used for the stats endpoint"
+                "Note that the Campaign Performance Stats stream will only go back "
+                "a total of 365 days."
+            ),
         ),
     ).to_dict()
 
