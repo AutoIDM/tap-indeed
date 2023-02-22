@@ -46,10 +46,8 @@ pipx install tap-indeedsponsoredjobs
 Install from GitHub:
 
 ```bash
-pipx install git+https://github.com/ORG_NAME/tap-indeedsponsoredjobs.git@main
+pipx install git+https://github.com/AutoIDM/tap-indeedsponsoredjobs.git@main
 ```
-
--->
 
 ## Configuration
 
