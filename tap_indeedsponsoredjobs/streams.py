@@ -144,11 +144,11 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
                 self.logger.info(
                     f"We have { pendulum.today().diff(start_date).in_days() } day(s) left. Fetching {start_date.date()} to {end_date} next."
                 )
-            # State hack to remove this from the context partition, so we can save without hitting:
-            # ValueError: State file contains duplicate entries for partition: {state_partition_context}.
-            context.pop("_sdc_start_date")
         except ScopeNotWorkingForEmployerID as e:
             self.logger.warning(e)
+        # State hack to remove this from the context partition, so we can save without hitting:
+        # ValueError: State file contains duplicate entries for partition: {state_partition_context}.
+        context.pop("_sdc_start_date")
 
     def get_single_report(self, context):
         """Get a single report for a given date range.
