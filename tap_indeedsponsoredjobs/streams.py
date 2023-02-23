@@ -149,7 +149,7 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         finally:
             # State hack to remove this from the context partition, so we can save without hitting:
             # ValueError: State file contains duplicate entries for partition: {state_partition_context}.
-            context.pop("_sdc_start_date")
+            context.pop("_sdc_start_date", "avoid_key_error")
 
     def get_single_report(self, context):
         """Get a single report for a given date range.
