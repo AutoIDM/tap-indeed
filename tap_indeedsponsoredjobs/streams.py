@@ -1,8 +1,9 @@
 """Stream type classes for tap-indeedsponsoredjobs."""
 
+from __future__ import annotations
+
 import csv
 import datetime
-from datetime import time
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Union
 
@@ -74,6 +75,7 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
     is_sorted = True
     parent_stream_type = Employers
     records_jsonpath = "$.[*]"
+
     # We assumed version 6
     schema = th.PropertiesList(
         th.Property("Campaign ID", th.StringType),
@@ -93,32 +95,37 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         th.Property("_sdc_employer_id", th.StringType),
         th.Property("_sdc_start_date", th.DateTimeType),
         th.Property("_sdc_end_date", th.DateTimeType),
-        th.Property("_sdc_line_number", th.StringType),
+        th.Property("_sdc_line_number", th.CustomType({"type": ["string", "null"]})),
     ).to_dict()
 
     def get_url_params(
         self,
         context: Optional[dict],
-        next_page_token: Optional[Any],
+        next_page_token,
     ) -> Dict[str, Any]:
-        """Return a dictionary of values to be used in URL parameterization."""
-        # When start date is provided we're iterating through reports for each day
-        # Hacky as we should use native replication key interfaces here but the
-        # API didn't work well here due to us doing some custom logic for Reports / Dates
-        if context is not None and context.get("_sdc_start_date") is not None:
-            start_date = context["_sdc_start_date"]
-            start_date = pendulum.parse(start_date)
-        else:
-            start_date = self.get_starting_timestamp(context)
-        end_date = start_date.add(days=1)
         params: dict = {}
-        params["startDate"] = start_date.format("YYYY-MM-DD")
-        params["endDate"] = end_date.format("YYYY-MM-DD")
+        params["startDate"] = self.start_date_format
+        params["endDate"] = self.end_date_format
         params["v"] = "6"  # Report version 6
-
         return params
+    
+    @property
+    def start_date(self) -> pendulum.DateTime:
+        return self._start_date
 
-    def get_records(self, context):
+    @start_date.setter
+    def start_date(self, value):
+        self._start_date = value
+
+    @property
+    def start_date_format(self) -> str:
+        return self.start_date.format("YYYY-MM-DD")
+
+    @property
+    def end_date_format(self) -> str:
+        return self.start_date.add(days=1).format("YYYY-MM-DD")
+
+    def get_records(self, context: dict | None) -> Iterable[dict[str, Any]]:
         """Return a generator of record-type dictionary objects.
 
         To get all reports we must iterate over each day individually according to the Indeed API
@@ -130,26 +137,23 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
             One item per (possibly processed) record in the API.
         """
         try:
-            # Initial Dates
-            start_date = self.get_url_params(context, None)["startDate"]
-            start_date = pendulum.parse(start_date)
-            # Stop when the start_date is set to today
-            while start_date.date() != pendulum.today().date():
+            starting_timestamp: datetime.datetime | None =  \
+                self.get_starting_timestamp(context)
+            if starting_timestamp is None:
+                raise Exception("No start date provided. Please provide a start date.")
+            initial_start_date: pendulum.DateTime = \
+                pendulum.instance(starting_timestamp)
+            # Set instance var start date for the get_url_params function
+            self.start_date = initial_start_date
+
+            while self.start_date.date() != pendulum.today().date():
                 yield from self.get_single_report(context)
-                context["_sdc_start_date"] = start_date.add(days=1).format("YYYY-MM-DD")
-                start_date = self.get_url_params(context, None)["startDate"]
-                # Easier to play with startdate if it's in the type pendulum.datetime.Datetime
-                start_date = pendulum.parse(start_date)
-                end_date = self.get_url_params(context, None)["endDate"]
+                self.start_date = self.start_date.add(days=1)
                 self.logger.info(
-                    f"We have { pendulum.today().diff(start_date).in_days() } day(s) left. Fetching {start_date.date()} to {end_date} next."
+                    f"We have { pendulum.today().diff(self.start_date).in_days() } day(s) left. Fetching {self.start_date_format} to {self.end_date_format} next."
                 )
         except ScopeNotWorkingForEmployerID as e:
             self.logger.warning(e)
-        finally:
-            # State hack to remove this from the context partition, so we can save without hitting:
-            # ValueError: State file contains duplicate entries for partition: {state_partition_context}.
-            context.pop("_sdc_start_date", "avoid_key_error")
 
     def get_single_report(self, context):
         """Get a single report for a given date range.
@@ -209,9 +213,14 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
             yield response.json()
         else:
             csv_data = csv.DictReader(response.text.splitlines())
+            has_data = False
             for record in csv_data:
+                has_data = True
                 record["_sdc_line_number"] = str(csv_data.line_num)
                 yield record
+            if has_data is False:
+                yield {"_sdc_line_number": None}
+
 
 
 class Campaigns(IndeedSponsoredJobsStream):
