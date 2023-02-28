@@ -19,11 +19,11 @@ plugins:
     - name: client_secret
       kind: password
     select:
-#    - 'employer_stats_report.*'
+    - 'employer_stats_report.*'
 #    - 'campaign_property.*'
-    - 'campaign_job_detail.*'
+#    - 'campaign_job_detail.*'
     config:
-      start_date: "2023-01-25"
+      start_date: "2023-02-20"
   loaders:
   - name: target-jsonl
     variant: andyh1203
