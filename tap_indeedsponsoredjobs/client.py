@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import backoff
 import json
 import logging
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union, Generator
 from urllib.parse import urlparse
 
 import cloudscraper
@@ -342,3 +343,24 @@ class IndeedSponsoredJobsStream(RESTStream):
                 yield transformed_record
         except ScopeNotWorkingForEmployerID as e:
             self.logger.warning(e)
+    
+    def backoff_max_tries(self) -> int:
+        """The number of attempts before giving up when retrying requests.
+
+        Returns:
+            Number of max retries.
+        """
+        return 20
+    
+    def backoff_wait_generator(self) -> Generator[float, None, None]:
+        """The wait generator used by the backoff decorator on request failure.
+
+        See for options:
+        https://github.com/litl/backoff/blob/master/backoff/_wait_gen.py
+
+        And see for examples: `Code Samples <../code_samples.html#custom-backoff>`_
+
+        Returns:
+            The wait generator
+        """
+        return backoff.expo(factor=5)  # type: ignore # ignore 'Returning Any'
