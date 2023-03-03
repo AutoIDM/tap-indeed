@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import backoff
 import json
 import logging
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Union, Generator
+from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Union
 from urllib.parse import urlparse
 
+import backoff
 import cloudscraper
 import requests
 from memoization import cached
@@ -364,3 +364,34 @@ class IndeedSponsoredJobsStream(RESTStream):
             The wait generator
         """
         return backoff.expo(factor=5)  # type: ignore # ignore 'Returning Any'
+
+    def request_decorator(self, func: Callable) -> Callable:
+        """Instantiate a decorator for handling request failures.
+
+        Uses a wait generator defined in `backoff_wait_generator` to
+        determine backoff behaviour. Try limit is defined in
+        `backoff_max_tries`, and will trigger the event defined in
+        `backoff_handler` before retrying. Developers may override one or
+        all of these methods to provide custom backoff or retry handling.
+
+        Args:
+            func: Function to decorate.
+
+        Returns:
+            A decorated method.
+        """
+        decorator: Callable = backoff.on_exception(
+            self.backoff_wait_generator,
+            (
+                ConnectionResetError,
+                RetriableAPIError,
+                requests.exceptions.ReadTimeout,
+                requests.exceptions.ConnectionError,
+                requests.exceptions.ChunkedEncodingError,
+                requests.exceptions.ContentDecodingError,
+                requests.exceptions.SSLError,
+            ),
+            max_tries=self.backoff_max_tries,
+            on_backoff=self.backoff_handler,
+        )(func)
+        return decorator
