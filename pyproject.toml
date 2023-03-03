@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "tap-indeed"
-version = "0.0.18"
+version = "0.0.19"
 description = "`tap-indeed` is a Singer tap for IndeedSponsoredJobs, built with the Meltano SDK for Singer Taps."
 authors = ["AutoIDM"]
 keywords = [
