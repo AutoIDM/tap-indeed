@@ -250,7 +250,6 @@ class Campaigns(IndeedSponsoredJobsStream):
         #    params["sort"] = "asc"
         #    params["order_by"] = self.replication_key
         params["perPage"] = 1000000000
-        params["status"] = "Active"
         return params
 
     def get_child_context(self, record: dict, context: Optional[dict]) -> dict:
