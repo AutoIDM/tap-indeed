@@ -12,11 +12,14 @@
 
 ## Settings
 
+## Settings
+
 | Setting             | Required | Default | Description |
 |:--------------------|:--------:|:-------:|:------------|
+| campaign_status     | True     | Active  | Campaign Status to filter on. Defaults to 'Active' alternatives are ACTIVE, DELETED, PAUSED |
 | client_id           | True     | None    | client_id from https://secure.indeed.com/account/apikeys |
 | client_secret       | True     | None    | client_secret from https://secure.indeed.com/account/apikeys |
-| start_date          | True     | today - 365 days  | Defaults to today minus 365, only used for the stats endpoint |
+| start_date          | True     | today - 365 days | Defaults to today minus 365, only used for the stats endpointNote that the Campaign Performance Stats stream will only go back a total of 365 days. |
 | stream_maps         | False    | None    | Config object for stream maps capability. For more information check out [Stream Maps](https://sdk.meltano.com/en/latest/stream_maps.html). |
 | stream_map_config   | False    | None    | User-defined config values to be used within map expressions. |
 | flattening_enabled  | False    | None    | 'True' to enable schema flattening and automatically expand nested properties. |
