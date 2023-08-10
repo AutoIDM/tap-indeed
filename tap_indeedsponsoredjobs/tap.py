@@ -36,6 +36,13 @@ class TapIndeedSponsoredJobs(Tap):
 
     config_jsonschema = th.PropertiesList(
         th.Property(
+            "campaign_status",
+            th.StringType,
+            required=True,
+            default="Active",
+            description="Campaign Status to filter on. Defaults to 'Active' alternatives are ACTIVE, DELETED, PAUSED",
+        ),
+        th.Property(
             "client_id",
             th.StringType,
             required=True,
