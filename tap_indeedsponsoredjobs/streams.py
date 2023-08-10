@@ -57,6 +57,9 @@ class Employers(IndeedSponsoredJobsStream):
         return {
             "_sdc_employer_id": record["id"],
         }
+# Leaving as a comment for now as this is nice for debugging    
+#    def get_records(self, context: dict | None) -> Iterable[dict[str, Any]]:
+#        return [{"id": "id_here"}]
 
 
 class EmployerStatsReport(IndeedSponsoredJobsStream):
@@ -95,7 +98,7 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         th.Property("_sdc_employer_id", th.StringType),
         th.Property("_sdc_start_date", th.DateTimeType),
         th.Property("_sdc_end_date", th.DateTimeType),
-        th.Property("_sdc_line_number", th.CustomType({"type": ["string", "null"]})),
+        th.Property("_sdc_line_number", th.StringType),
     ).to_dict()
 
     def get_url_params(
@@ -219,7 +222,7 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
                 record["_sdc_line_number"] = str(csv_data.line_num)
                 yield record
             if has_data is False:
-                yield {"_sdc_line_number": None}
+                yield {"_sdc_line_number": "None"} #Because we're using this as a key_property most targets need a value here for primary keys to work
 
 
 
