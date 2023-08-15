@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import datetime
 from pathlib import Path
+import threading
 from typing import Any, Dict, Iterable, List, Optional, Union
 
 import pendulum
@@ -14,6 +15,7 @@ from requests import PreparedRequest
 from singer_sdk import typing as th  # JSON Schema typing helpers
 from singer_sdk.authenticators import OAuthAuthenticator
 from singer_sdk.pagination import BaseAPIPaginator, SimpleHeaderPaginator
+from singer_sdk.helpers.jsonpath import extract_jsonpath
 
 from tap_indeedsponsoredjobs.auth import IndeedSponsoredJobsAuthenticator
 from tap_indeedsponsoredjobs.client import (
@@ -257,10 +259,81 @@ class Campaigns(IndeedSponsoredJobsStream):
 
     def get_child_context(self, record: dict, context: Optional[dict]) -> dict:
         """Return a context dictionary for child streams."""
+
+        # The name of each threaded child stream and its associated url, for use in the
+        # manage_threads() function. Name is required so that manage_threads() can store
+        # data in a way that allows child streams to differentiate which data belongs to
+        # them. Adding url base and record["Id"] could be done inside manage_threads(),
+        # but it seemed cleaner to do it all here.
+        endpoints = {
+            "campaign_budget": f"{self.url_base}/v1/campaigns/{record['Id']}/budget",
+            "campaign_info": f"{self.url_base}/v1/campaigns/{record['Id']}",
+            "campaign_property": f"{self.url_base}/v1/campaigns/{record['Id']}/properties",
+            "campaign_job_detail": f"{self.url_base}/v1/campaigns/{record['Id']}/jobDetails",
+        }
+
+        threaded_data = self.manage_threads(endpoints=endpoints, context=context)
+
         return {
             "_sdc_employer_id": context["_sdc_employer_id"],
             "_sdc_campaign_id": record["Id"],
+            "_threaded_data": threaded_data,
         }
+    
+    def manage_threads(self, endpoints: dict[str, str], context) -> dict[str,dict]:
+        """Manages a series of threads determined by a dict of endpoints.
+
+        Args:
+            endpoints: A dictionary of endpoints. Each will have its own thread.
+        """
+        threads: list[threading.Thread] = []
+        results = {}
+
+        # Start each thread, keeping track of them in an array.
+        for name, endpoint in endpoints.items():
+            new_thread = threading.Thread(group=None, target=self.thread_stream, args=[name,endpoint,results,context])
+            threads.append(new_thread)
+            new_thread.start()
+
+        # Wait for the completion of all threads before continuing.
+        for thread in threads:
+            thread.join()
+
+        return results
+
+    def thread_stream(self, name, endpoint, results, context) -> None:
+        """Hits an endpoint and adds the response to the results dictionary.
+
+        Args:
+            name: The key to use in the results dictionary when adding data.
+            endpoint: The endpoint (full URL) to get data from.
+            results: A dictionary where returned data should be added.
+            context: Relevant context for the stream.
+        """
+
+        results[name] = []
+
+        paginator = self.get_new_paginator()
+        decorated_request = self.request_decorator(self._request)
+
+        while not paginator.finished:
+
+            # This code cuts out the prepare_request() intermediary and goes straight to
+            # build_prepared_request() because prepare_request() relies on certain
+            # instance variable being set in ways that paralell execution can't
+            # guarantee.
+            prepared_request = self.build_prepared_request(
+                method="GET",
+                url=endpoint,
+                params=super().get_url_params(context, paginator.current_value),
+                headers=self.http_headers,
+                json=None,
+                context=context,
+            )
+
+            resp = decorated_request(prepared_request, context)
+            results[name].append(resp.json())
+            paginator.advance(resp)
 
 
 class CampaignPerformanceStats(IndeedSponsoredJobsStream):
@@ -329,6 +402,10 @@ class CampaignBudget(IndeedSponsoredJobsStream):
         th.Property("_sdc_campaign_id", th.StringType),
     ).to_dict()
 
+    def request_records(self, context: dict | None) -> Iterable[dict]:
+        for input in context["_threaded_data"][self.name]:
+            yield from extract_jsonpath(self.records_jsonpath, input=input)
+
 
 class CampaignInfo(IndeedSponsoredJobsStream):
     """Campaign Info per Campaign"""
@@ -367,6 +444,10 @@ class CampaignInfo(IndeedSponsoredJobsStream):
         th.Property("_sdc_campaign_id", th.StringType),
     ).to_dict()
 
+    def request_records(self, context: dict | None) -> Iterable[dict]:
+        for input in context["_threaded_data"][self.name]:
+            yield from extract_jsonpath(self.records_jsonpath, input=input)
+
 
 class CampaignProperties(IndeedSponsoredJobsStream):
     """Campaign Properties per Campaign"""
@@ -384,6 +465,10 @@ class CampaignProperties(IndeedSponsoredJobsStream):
         th.Property("_sdc_campaign_id", th.StringType),
         th.Property("_sdc_employer_id", th.StringType),
     ).to_dict()
+
+    def request_records(self, context: dict | None) -> Iterable[dict]:
+        for input in context["_threaded_data"][self.name]:
+            yield from extract_jsonpath(self.records_jsonpath, input=input)
 
 
 class CampaignJobDetails(IndeedSponsoredJobsStream):
@@ -403,3 +488,7 @@ class CampaignJobDetails(IndeedSponsoredJobsStream):
         th.Property("_sdc_campaign_id", th.StringType),
         th.Property("_sdc_employer_id", th.StringType),
     ).to_dict()
+
+    def request_records(self, context: dict | None) -> Iterable[dict]:
+        for input in context["_threaded_data"][self.name]:
+            yield from extract_jsonpath(self.records_jsonpath, input=input)
