@@ -240,6 +240,11 @@ class Campaigns(IndeedSponsoredJobsStream):
         th.Property("_sdc_employer_id", th.StringType),
     ).to_dict()
 
+    def __init__(self, campaign_threaded_data: dict, *args, **kwargs) -> None:
+        """Initialize the campaign stream with a variable for storing threaded data."""
+        self.campaign_threaded_data = campaign_threaded_data
+        super().__init__(*args, **kwargs)
+
     def get_url_params(
         self, context: Optional[dict], next_page_token: Optional[Any]
     ) -> Dict[str, Any]:
@@ -260,40 +265,42 @@ class Campaigns(IndeedSponsoredJobsStream):
         """Return a context dictionary for child streams."""
 
         # The name of each threaded child stream and its associated url, for use in the
-        # manage_threads() function. Name is required so that manage_threads() can store
-        # data in a way that allows child streams to differentiate which data belongs to
-        # them. Adding url base and record["Id"] could be done inside manage_threads(),
-        # but it seemed cleaner to do it all here.
-        endpoints = {
-            "campaign_budget": f"{self.url_base}/v1/campaigns/{record['Id']}/budget",
-            "campaign_info": f"{self.url_base}/v1/campaigns/{record['Id']}",
-            "campaign_property": f"{self.url_base}/v1/campaigns/{record['Id']}/properties",
-            "campaign_job_detail": f"{self.url_base}/v1/campaigns/{record['Id']}/jobDetails",
-        }
+        # manage_threads() function. manage_threads() will store each piece of data in a
+        # dictionary with the url as a key. Adding url base and record["Id"] could be
+        # done inside manage_threads(), but it seemed cleaner to do it all here.
+        endpoints = [
+            f"{self.url_base}/v1/campaigns/{record['Id']}/budget",
+            f"{self.url_base}/v1/campaigns/{record['Id']}",
+            f"{self.url_base}/v1/campaigns/{record['Id']}/properties",
+            f"{self.url_base}/v1/campaigns/{record['Id']}/jobDetails",
+        ]
 
-        threaded_data = self.manage_threads(endpoints=endpoints, context=context)
+        # Data is taken from the manage_threads() function and stored in a tap-level
+        # dictionary for reference from the child streams. This implementation was
+        # chosen over storing in context because of the dangers of writing state while
+        # context contains large amounts of data.
+        self.manage_threads(endpoints=endpoints, context=context, campaign_threaded_data=self.campaign_threaded_data)
 
         return {
             "_sdc_employer_id": context["_sdc_employer_id"],
             "_sdc_campaign_id": record["Id"],
-            "_threaded_data": threaded_data,
         }
 
-    def manage_threads(self, endpoints: dict[str, str], context) -> dict[str, dict]:
+    def manage_threads(self, endpoints: list[str], context: dict, campaign_threaded_data: dict) -> None:
         """Manages a series of threads determined by a dict of endpoints.
 
         Args:
             endpoints: A dictionary of endpoints. Each will have its own thread.
         """
         threads: list[threading.Thread] = []
-        results = {}
+        stream_lock = threading.Lock()
 
         # Start each thread, keeping track of them in an array.
-        for name, endpoint in endpoints.items():
+        for endpoint in endpoints:
             new_thread = threading.Thread(
                 group=None,
                 target=self.thread_stream,
-                args=[name, endpoint, results, context],
+                args=[endpoint, campaign_threaded_data, context, stream_lock],
             )
             threads.append(new_thread)
             new_thread.start()
@@ -302,9 +309,7 @@ class Campaigns(IndeedSponsoredJobsStream):
         for thread in threads:
             thread.join()
 
-        return results
-
-    def thread_stream(self, name, endpoint, results, context) -> None:
+    def thread_stream(self, endpoint: str, campaign_threaded_data: dict, context: dict, stream_lock: threading.Lock) -> None:
         """Hits an endpoint and adds the response to the results dictionary.
 
         Args:
@@ -314,7 +319,7 @@ class Campaigns(IndeedSponsoredJobsStream):
             context: Relevant context for the stream.
         """
 
-        results[name] = []
+        campaign_threaded_data[endpoint] = []
 
         paginator = self.get_new_paginator()
         decorated_request = self.request_decorator(self._request)
@@ -322,7 +327,7 @@ class Campaigns(IndeedSponsoredJobsStream):
         while not paginator.finished:
             # This code cuts out the prepare_request() intermediary and goes straight to
             # build_prepared_request() because prepare_request() relies on certain
-            # instance variable being set in ways that paralell execution can't
+            # instance variable being set in ways that parallel execution can't
             # guarantee.
             prepared_request = self.build_prepared_request(
                 method="GET",
@@ -334,7 +339,13 @@ class Campaigns(IndeedSponsoredJobsStream):
             )
 
             resp = decorated_request(prepared_request, context)
-            results[name].append(resp.json())
+            response_json = resp.json()
+
+            # Critical section.
+            stream_lock.acquire()
+            campaign_threaded_data[endpoint].append(response_json)
+            stream_lock.release()
+
             paginator.advance(resp)
 
 
@@ -404,9 +415,16 @@ class CampaignBudget(IndeedSponsoredJobsStream):
         th.Property("_sdc_campaign_id", th.StringType),
     ).to_dict()
 
+    def __init__(self, campaign_threaded_data: dict, *args, **kwargs) -> None:
+        """Initialize the stream with a variable for storing threaded data."""
+        self.campaign_threaded_data = campaign_threaded_data
+        super().__init__(*args, **kwargs)
+
     def request_records(self, context: dict | None) -> Iterable[dict]:
-        for input in context["_threaded_data"][self.name]:
+        url = self.get_url(context)
+        for input in self.campaign_threaded_data[url]:
             yield from extract_jsonpath(self.records_jsonpath, input=input)
+            self.campaign_threaded_data.pop(url)
 
 
 class CampaignInfo(IndeedSponsoredJobsStream):
@@ -446,9 +464,16 @@ class CampaignInfo(IndeedSponsoredJobsStream):
         th.Property("_sdc_campaign_id", th.StringType),
     ).to_dict()
 
+    def __init__(self, campaign_threaded_data: dict, *args, **kwargs) -> None:
+        """Initialize the stream with a variable for storing threaded data."""
+        self.campaign_threaded_data = campaign_threaded_data
+        super().__init__(*args, **kwargs)
+
     def request_records(self, context: dict | None) -> Iterable[dict]:
-        for input in context["_threaded_data"][self.name]:
+        url = self.get_url(context)
+        for input in self.campaign_threaded_data[url]:
             yield from extract_jsonpath(self.records_jsonpath, input=input)
+            self.campaign_threaded_data.pop(url)
 
 
 class CampaignProperties(IndeedSponsoredJobsStream):
@@ -468,9 +493,16 @@ class CampaignProperties(IndeedSponsoredJobsStream):
         th.Property("_sdc_employer_id", th.StringType),
     ).to_dict()
 
+    def __init__(self, campaign_threaded_data: dict, *args, **kwargs) -> None:
+        """Initialize the stream with a variable for storing threaded data."""
+        self.campaign_threaded_data = campaign_threaded_data
+        super().__init__(*args, **kwargs)
+
     def request_records(self, context: dict | None) -> Iterable[dict]:
-        for input in context["_threaded_data"][self.name]:
+        url = self.get_url(context)
+        for input in self.campaign_threaded_data[url]:
             yield from extract_jsonpath(self.records_jsonpath, input=input)
+            self.campaign_threaded_data.pop(url)
 
 
 class CampaignJobDetails(IndeedSponsoredJobsStream):
@@ -491,6 +523,14 @@ class CampaignJobDetails(IndeedSponsoredJobsStream):
         th.Property("_sdc_employer_id", th.StringType),
     ).to_dict()
 
+    def __init__(self, campaign_threaded_data: dict, *args, **kwargs) -> None:
+        """Initialize the stream with a variable for storing threaded data."""
+        self.campaign_threaded_data = campaign_threaded_data
+        super().__init__(*args, **kwargs)
+
     def request_records(self, context: dict | None) -> Iterable[dict]:
-        for input in context["_threaded_data"][self.name]:
+        url = self.get_url(context)
+        for input in self.campaign_threaded_data[url]:
+            self.logger.info(f"{self.campaign_threaded_data=}")
             yield from extract_jsonpath(self.records_jsonpath, input=input)
+            self.campaign_threaded_data.pop(url)

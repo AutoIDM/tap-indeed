@@ -17,17 +17,6 @@ from tap_indeedsponsoredjobs.streams import (
     EmployerStatsReport,
 )
 
-STREAM_TYPES = [
-    Employers,
-    Campaigns,
-    CampaignProperties,
-    CampaignJobDetails,
-    CampaignBudget,
-    CampaignInfo,
-    CampaignPerformanceStats,
-    EmployerStatsReport,
-]
-
 
 class TapIndeedSponsoredJobs(Tap):
     """IndeedSponsoredJobs tap class."""
@@ -69,8 +58,19 @@ class TapIndeedSponsoredJobs(Tap):
 
     def discover_streams(self) -> List[Stream]:
         """Return a list of discovered streams."""
-        return [stream_class(tap=self) for stream_class in STREAM_TYPES]
 
+        campaign_threaded_data = {}
+
+        return [
+            Employers(tap=self),
+            Campaigns(campaign_threaded_data=campaign_threaded_data, tap=self),
+            CampaignProperties(campaign_threaded_data=campaign_threaded_data, tap=self),
+            CampaignJobDetails(campaign_threaded_data=campaign_threaded_data, tap=self),
+            CampaignBudget(campaign_threaded_data=campaign_threaded_data, tap=self),
+            CampaignInfo(campaign_threaded_data=campaign_threaded_data, tap=self),
+            CampaignPerformanceStats(tap=self),
+            EmployerStatsReport(tap=self),
+        ]
 
 if __name__ == "__main__":
     TapIndeedSponsoredJobs.cli()

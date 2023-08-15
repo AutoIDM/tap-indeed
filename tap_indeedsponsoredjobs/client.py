@@ -397,32 +397,3 @@ class IndeedSponsoredJobsStream(RESTStream):
         )(func)
         return decorator
     
-    def _process_record(
-        self,
-        record: dict,
-        child_context: dict | None = None,
-        partition_context: dict | None = None,
-    ) -> None:
-        """Process a record.
-
-        Overridden to prevent adding _threaded_data context to record, as doing so would
-        create infinite recursion.
-
-        Args:
-            record: The record to process.
-            child_context: The child context.
-            partition_context: The partition context.
-        """
-        partition_context = partition_context or {}
-        child_context = copy.copy(
-            self.get_child_context(record=record, context=child_context),
-        )
-
-        for key, val in partition_context.items():
-            # Add state context to records if not already present
-            if key not in record and key != "_threaded_data":
-                record[key] = val
-
-        # Sync children, except when primary mapper filters out the record
-        if self.stream_maps[0].get_filter_result(record):
-            self._sync_children(child_context)
