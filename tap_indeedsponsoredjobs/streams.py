@@ -224,7 +224,6 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
                 yield {"_sdc_line_number": None}
 
 
-
 class Campaigns(IndeedSponsoredJobsStream):
     """Campaigns per Employer"""
 
@@ -279,8 +278,8 @@ class Campaigns(IndeedSponsoredJobsStream):
             "_sdc_campaign_id": record["Id"],
             "_threaded_data": threaded_data,
         }
-    
-    def manage_threads(self, endpoints: dict[str, str], context) -> dict[str,dict]:
+
+    def manage_threads(self, endpoints: dict[str, str], context) -> dict[str, dict]:
         """Manages a series of threads determined by a dict of endpoints.
 
         Args:
@@ -291,7 +290,11 @@ class Campaigns(IndeedSponsoredJobsStream):
 
         # Start each thread, keeping track of them in an array.
         for name, endpoint in endpoints.items():
-            new_thread = threading.Thread(group=None, target=self.thread_stream, args=[name,endpoint,results,context])
+            new_thread = threading.Thread(
+                group=None,
+                target=self.thread_stream,
+                args=[name, endpoint, results, context],
+            )
             threads.append(new_thread)
             new_thread.start()
 
@@ -317,7 +320,6 @@ class Campaigns(IndeedSponsoredJobsStream):
         decorated_request = self.request_decorator(self._request)
 
         while not paginator.finished:
-
             # This code cuts out the prepare_request() intermediary and goes straight to
             # build_prepared_request() because prepare_request() relies on certain
             # instance variable being set in ways that paralell execution can't
