@@ -279,6 +279,7 @@ class Campaigns(IndeedSponsoredJobsStream):
         # dictionary for reference from the child streams. This implementation was
         # chosen over storing in context because of the dangers of writing state while
         # context contains large amounts of data.
+        self.logger.info(f"Threading to call all of these endpoints at the same time {endpoints=}")
         self.manage_threads(endpoints=endpoints, context=context, campaign_threaded_data=self.campaign_threaded_data)
 
         return {
