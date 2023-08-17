@@ -59,6 +59,15 @@ class Employers(IndeedSponsoredJobsStream):
         return {
             "_sdc_employer_id": record["id"],
         }
+    
+    def get_records(self, context: Optional[dict]) -> Iterable[dict]:
+        """Return a generator of row-type dictionary objects."""
+        # If employer_ids is empty, null, or nonexistant, default to using the API to
+        # determine all employers.
+        if "employer_ids" in self.config and self.config["employer_ids"]:
+            return [{"id": id} for id in self.config["employer_ids"]]
+        else:
+            return super().get_records(context=context)
 
 
 class EmployerStatsReport(IndeedSponsoredJobsStream):

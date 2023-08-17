@@ -44,6 +44,15 @@ class TapIndeedSponsoredJobs(Tap):
             description="client_secret from https://secure.indeed.com/account/apikeys",
         ),
         th.Property(
+            "employer_ids",
+            th.ArrayType(th.StringType),
+            required=False,
+            description=(
+                "List of employer ids to use for children of the employer stream. If "
+                "left unset, will pull all employer ids."
+            ),
+        ),
+        th.Property(
             "start_date",
             th.StringType,
             required=True,
