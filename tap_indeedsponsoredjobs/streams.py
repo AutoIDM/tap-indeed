@@ -104,7 +104,7 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         th.Property("_sdc_employer_id", th.StringType),
         th.Property("_sdc_start_date", th.DateTimeType),
         th.Property("_sdc_end_date", th.DateTimeType),
-        th.Property("_sdc_line_number", th.CustomType({"type": ["string", "null"]})),
+        th.Property("_sdc_line_number", th.StringType),
     ).to_dict()
 
     def get_url_params(
