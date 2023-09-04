@@ -6,14 +6,12 @@ import csv
 import datetime
 from pathlib import Path
 import threading
-from typing import Any, Dict, Iterable, List, Optional, Union
+from typing import Any, Dict, Iterable, Optional
 
 import pendulum
 import requests
 from memoization import cached
-from requests import PreparedRequest
 from singer_sdk import typing as th  # JSON Schema typing helpers
-from singer_sdk.authenticators import OAuthAuthenticator
 from singer_sdk.pagination import BaseAPIPaginator, SimpleHeaderPaginator
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 
@@ -27,7 +25,6 @@ SCHEMAS_DIR = Path(__file__).parent / Path("./schemas")
 
 
 class ThreadedIndeedSponsoredJobsStream(IndeedSponsoredJobsStream):
-
     def __init__(self, campaign_threaded_data: dict, *args, **kwargs) -> None:
         """Initialize the stream with a variable for storing threaded data."""
         self.campaign_threaded_data = campaign_threaded_data
@@ -76,7 +73,7 @@ class Employers(IndeedSponsoredJobsStream):
         return {
             "_sdc_employer_id": record["id"],
         }
-    
+
     def get_records(self, context: Optional[dict]) -> Iterable[dict]:
         """Return a generator of row-type dictionary objects."""
         # If employer_ids is empty, null, or nonexistant, default to using the API to
@@ -91,7 +88,8 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
     """Employer Stats Report.
 
     These reports are CSVs generated in daily increments.
-    The benefit over this stream vs the Campaign Performance Stats stream is that this stream includes extra information in the report such as Job information.
+    The benefit over this stream vs the Campaign Performance Stats stream is that this
+    stream includes extra information in the report such as Job information.
 
     Line Number is the line number in the CSV returned line 1 = headers
     """
@@ -136,7 +134,7 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         params["endDate"] = self.end_date_format
         params["v"] = "6"  # Report version 6
         return params
-    
+
     @property
     def start_date(self) -> pendulum.DateTime:
         return self._start_date
@@ -156,7 +154,8 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
     def get_records(self, context: dict | None) -> Iterable[dict[str, Any]]:
         """Return a generator of record-type dictionary objects.
 
-        To get all reports we must iterate over each day individually according to the Indeed API
+        To get all reports we must iterate over each day individually according to the
+        Indeed API
 
         Args:
             context: Stream partition or context dictionary.
@@ -165,12 +164,14 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
             One item per (possibly processed) record in the API.
         """
         try:
-            starting_timestamp: datetime.datetime | None =  \
-                self.get_starting_timestamp(context)
+            starting_timestamp: datetime.datetime | None = self.get_starting_timestamp(
+                context
+            )
             if starting_timestamp is None:
                 raise Exception("No start date provided. Please provide a start date.")
-            initial_start_date: pendulum.DateTime = \
-                pendulum.instance(starting_timestamp)
+            initial_start_date: pendulum.DateTime = pendulum.instance(
+                starting_timestamp
+            )
             # Set instance var start date for the get_url_params function
             self.start_date = initial_start_date
 
@@ -178,7 +179,9 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
                 yield from self.get_single_report(context)
                 self.start_date = self.start_date.add(days=1)
                 self.logger.info(
-                    f"We have { pendulum.today().diff(self.start_date).in_days() } day(s) left. Fetching {self.start_date_format} to {self.end_date_format} next."
+                    f"We have { pendulum.today().diff(self.start_date).in_days() } "
+                    f"day(s) left. Fetching {self.start_date_format} to "
+                    f"{self.end_date_format} next."
                 )
         except ScopeNotWorkingForEmployerID as e:
             self.logger.warning(e)
@@ -200,7 +203,8 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
                 report_pointer_record = record
             else:
                 raise Exception(
-                    "More than one record for a report is returned. This should not happen."
+                    "More than one record for a report is returned. This should not "
+                    "happen."
                 )
 
         # Get data from th genearted report
@@ -291,10 +295,11 @@ class Campaigns(IndeedSponsoredJobsStream):
         """Return a context dictionary for child streams."""
 
         if self.config["threading_enable"]:
-            # The name of each threaded child stream and its associated url, for use in the
-            # manage_threads() function. manage_threads() will store each piece of data in a
-            # dictionary with the url as a key. Adding url base and record["Id"] could be
-            # done inside manage_threads(), but it seemed cleaner to do it all here.
+            # The name of each threaded child stream and its associated url, for use in
+            # the manage_threads() function. manage_threads() will store each piece of
+            # data in a dictionary with the url as a key. Adding url base and
+            # record["Id"] could be done inside manage_threads(), but it seemed cleaner
+            # to do it all here.
             endpoints = [
                 f"{self.url_base}/v1/campaigns/{record['Id']}/budget",
                 f"{self.url_base}/v1/campaigns/{record['Id']}",
@@ -304,17 +309,25 @@ class Campaigns(IndeedSponsoredJobsStream):
 
             # Data is taken from the manage_threads() function and stored in a tap-level
             # dictionary for reference from the child streams. This implementation was
-            # chosen over storing in context because of the dangers of writing state while
-            # context contains large amounts of data.
-            self.logger.info(f"Threading to call all of these endpoints at the same time {endpoints=}")
-            self.manage_threads(endpoints=endpoints, context=context, campaign_threaded_data=self.campaign_threaded_data)
+            # chosen over storing in context because of the dangers of writing state
+            # while context contains large amounts of data.
+            self.logger.info(
+                f"Threading to call all of these endpoints simultaneously {endpoints=}"
+            )
+            self.manage_threads(
+                endpoints=endpoints,
+                context=context,
+                campaign_threaded_data=self.campaign_threaded_data,
+            )
 
         return {
             "_sdc_employer_id": context["_sdc_employer_id"],
             "_sdc_campaign_id": record["Id"],
         }
 
-    def manage_threads(self, endpoints: list[str], context: dict, campaign_threaded_data: dict) -> None:
+    def manage_threads(
+        self, endpoints: list[str], context: dict, campaign_threaded_data: dict
+    ) -> None:
         """Manages a series of threads determined by a dict of endpoints.
 
         Args:
@@ -331,7 +344,9 @@ class Campaigns(IndeedSponsoredJobsStream):
                 args=[endpoint, campaign_threaded_data, context, stream_lock],
             )
             threads.append(new_thread)
-            self.logger.info("Starting a thread %s for endpoint '%s'", new_thread, endpoint)
+            self.logger.info(
+                "Starting a thread %s for endpoint '%s'", new_thread, endpoint
+            )
             new_thread.start()
 
         # Wait for the completion of all threads before continuing.
@@ -339,7 +354,13 @@ class Campaigns(IndeedSponsoredJobsStream):
             self.logger.info("Joining thread %s", thread)
             thread.join()
 
-    def thread_stream(self, endpoint: str, campaign_threaded_data: dict, context: dict, stream_lock: threading.Lock) -> None:
+    def thread_stream(
+        self,
+        endpoint: str,
+        campaign_threaded_data: dict,
+        context: dict,
+        stream_lock: threading.Lock,
+    ) -> None:
         """Hits an endpoint and adds the response to the results dictionary.
 
         Args:
@@ -383,7 +404,9 @@ class Campaigns(IndeedSponsoredJobsStream):
 
 
 class CampaignPerformanceStats(IndeedSponsoredJobsStream):
-    """Campaign Performance per Campaign. Note we limit the data set to be one year old."""
+    """Campaign Performance per Campaign.
+
+    Note we limit the data set to be one year old."""
 
     name = "campaign_performance_stats"
     path = "/v1/campaigns/{_sdc_campaign_id}/stats"

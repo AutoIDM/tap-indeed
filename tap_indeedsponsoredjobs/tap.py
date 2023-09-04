@@ -10,11 +10,9 @@ from tap_indeedsponsoredjobs.streams import (
     CampaignBudget,
     CampaignInfo,
     CampaignJobDetails,
-    CampaignPerformanceStats,
     CampaignProperties,
     Campaigns,
     Employers,
-    EmployerStatsReport,
 )
 
 
@@ -29,7 +27,10 @@ class TapIndeedSponsoredJobs(Tap):
             th.StringType,
             required=True,
             default="Active",
-            description="Campaign Status to filter on. Defaults to 'Active' alternatives are ACTIVE, DELETED, PAUSED",
+            description=(
+                "Campaign Status to filter on. Defaults to 'Active' alternatives are "
+                "ACTIVE, DELETED, PAUSED",
+            ),
         ),
         th.Property(
             "client_id",
@@ -57,9 +58,7 @@ class TapIndeedSponsoredJobs(Tap):
             th.BooleanType,
             required=True,
             default=False,
-            description=(
-                "Whether to use threading to run some streams in parallel."
-            ),
+            description=("Whether to use threading to run some streams in parallel."),
         ),
         th.Property(
             "start_date",
@@ -89,6 +88,7 @@ class TapIndeedSponsoredJobs(Tap):
             # CampaignPerformanceStats(tap=self),
             # EmployerStatsReport(tap=self),
         ]
+
 
 if __name__ == "__main__":
     TapIndeedSponsoredJobs.cli()
