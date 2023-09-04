@@ -1,6 +1,5 @@
 """IndeedSponsoredJobs Authentication."""
 
-import logging
 from typing import Callable, Generator
 from urllib.parse import urlparse
 
@@ -172,10 +171,9 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
             details: backoff invocation details
                 https://github.com/litl/backoff#event-handlers
         """
-        logging.error(
+        self.logger.error(
             "Backing off {wait:0.1f} seconds after {tries} tries "
-            "calling function {target} with args {args} and kwargs "
-            "{kwargs}".format(**details)
+            "calling function {target}".format(**details)
         )
 
     def validate_response(self, response: requests.Response) -> None:
