@@ -85,8 +85,8 @@ class TapIndeedSponsoredJobs(Tap):
             CampaignJobDetails(campaign_threaded_data=campaign_threaded_data, tap=self),
             CampaignBudget(campaign_threaded_data=campaign_threaded_data, tap=self),
             CampaignInfo(campaign_threaded_data=campaign_threaded_data, tap=self),
-            # CampaignPerformanceStats(tap=self),
-            # EmployerStatsReport(tap=self),
+            CampaignPerformanceStats(tap=self),
+            EmployerStatsReport(tap=self),
         ]
 
 

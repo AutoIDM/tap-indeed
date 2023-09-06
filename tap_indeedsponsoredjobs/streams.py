@@ -24,7 +24,8 @@ from tap_indeedsponsoredjobs.client import (
 SCHEMAS_DIR = Path(__file__).parent / Path("./schemas")
 
 
-class ThreadedIndeedSponsoredJobsStream(IndeedSponsoredJobsStream):
+class ThreadableIndeedSponsoredJobsStream(IndeedSponsoredJobsStream):
+
     def __init__(self, campaign_threaded_data: dict, *args, **kwargs) -> None:
         """Initialize the stream with a variable for storing threaded data."""
         self.campaign_threaded_data = campaign_threaded_data
@@ -456,7 +457,7 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
         return params
 
 
-class CampaignBudget(ThreadedIndeedSponsoredJobsStream):
+class CampaignBudget(ThreadableIndeedSponsoredJobsStream):
     """Campaign Budget per Campaign"""
 
     name = "campaign_budget"
@@ -472,7 +473,7 @@ class CampaignBudget(ThreadedIndeedSponsoredJobsStream):
     ).to_dict()
 
 
-class CampaignInfo(ThreadedIndeedSponsoredJobsStream):
+class CampaignInfo(ThreadableIndeedSponsoredJobsStream):
     """Campaign Info per Campaign"""
 
     name = "campaign_info"
@@ -510,7 +511,7 @@ class CampaignInfo(ThreadedIndeedSponsoredJobsStream):
     ).to_dict()
 
 
-class CampaignProperties(ThreadedIndeedSponsoredJobsStream):
+class CampaignProperties(ThreadableIndeedSponsoredJobsStream):
     """Campaign Properties per Campaign"""
 
     name = "campaign_property"
@@ -528,7 +529,7 @@ class CampaignProperties(ThreadedIndeedSponsoredJobsStream):
     ).to_dict()
 
 
-class CampaignJobDetails(ThreadedIndeedSponsoredJobsStream):
+class CampaignJobDetails(ThreadableIndeedSponsoredJobsStream):
     """Job Details per Campaign"""
 
     name = "campaign_job_detail"
