@@ -53,6 +53,15 @@ class TapIndeedSponsoredJobs(Tap):
             ),
         ),
         th.Property(
+            "threading_enable",
+            th.BooleanType,
+            required=True,
+            default=False,
+            description=(
+                "Whether to use threading to run some streams in parallel."
+            ),
+        ),
+        th.Property(
             "start_date",
             th.StringType,
             required=True,
