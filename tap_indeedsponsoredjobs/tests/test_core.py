@@ -5,7 +5,6 @@ import json
 
 import pytest
 import responses
-from singer_sdk.testing import get_standard_tap_tests
 
 from tap_indeedsponsoredjobs.auth import IndeedSponsoredJobsAuthenticator
 from tap_indeedsponsoredjobs.tap import TapIndeedSponsoredJobs
@@ -25,7 +24,11 @@ def mocked_responses():
 
 def test_auth_backoff(mocked_responses):
     body = {
-        "scope": "employer.advertising.subaccount.read employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read employer_access",
+        "scope": (
+            "employer.advertising.subaccount.read employer.advertising.account.read emp"
+            "loyer.advertising.campaign.read employer.advertising.campaign_report.read "
+            "employer_access"
+        ),
         "client_id": "abc",
         "client_secret": "abc",
         "grant_type": "client_credentials",
@@ -39,12 +42,11 @@ def test_auth_backoff(mocked_responses):
     )
     tap = TapIndeedSponsoredJobs(config=SAMPLE_CONFIG, parse_env_config=False)
     employer_stream = tap.streams["employers"]
-    auth = IndeedSponsoredJobsAuthenticator(
+    IndeedSponsoredJobsAuthenticator(
         stream=employer_stream,
         oauth_scopes=body["scope"],
         auth_endpoint="https://apis.indeed.com/oauth/v2/tokens",
     )
-    headers = auth.auth_headers
 
 
 # Run standard built-in tap tests from the SDK:

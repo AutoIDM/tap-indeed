@@ -1,12 +1,11 @@
 """IndeedSponsoredJobs Authentication."""
 
-import logging
-from typing import Callable, Generator
+from typing import Callable
 from urllib.parse import urlparse
 
 import backoff
 import requests
-from requests import Request, Session
+from requests import Session
 from singer_sdk.authenticators import OAuthAuthenticator
 from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 from singer_sdk.helpers._util import utc_now
@@ -71,7 +70,11 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         return cls(
             stream=stream,
             auth_endpoint="https://apis.indeed.com/oauth/v2/tokens",
-            oauth_scopes="employer.advertising.subaccount.read employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read employer_access",
+            oauth_scopes=(
+                "employer.advertising.subaccount.read employer.advertising.account.read"
+                " employer.advertising.campaign.read employer.advertising.campaign_repo"
+                "rt.read employer_access",
+            ),
         )
 
     @classmethod
@@ -79,7 +82,11 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         return cls(
             stream=stream,
             auth_endpoint="https://apis.indeed.com/oauth/v2/tokens",
-            oauth_scopes="employer.advertising.subaccount.read employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read",
+            oauth_scopes=(
+                "employer.advertising.subaccount.read employer.advertising.account.read"
+                " employer.advertising.campaign.read employer.advertising.campaign_repo"
+                "rt.read"
+            ),
             employerid=employerid,
         )
 
@@ -172,10 +179,9 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
             details: backoff invocation details
                 https://github.com/litl/backoff#event-handlers
         """
-        logging.error(
+        self.logger.error(
             "Backing off {wait:0.1f} seconds after {tries} tries "
-            "calling function {target} with args {args} and kwargs "
-            "{kwargs}".format(**details)
+            "calling function {target}".format(**details)
         )
 
     def validate_response(self, response: requests.Response) -> None:
