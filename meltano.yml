@@ -18,7 +18,10 @@ plugins:
       kind: password
     - name: client_secret
       kind: password
-    select:
+    - name: campaign_status
+      kind: string
+    - name: employer_ids
+      kind: array
     config:
       start_date: "2023-02-20"
   loaders:
