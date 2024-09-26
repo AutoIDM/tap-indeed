@@ -1,13 +1,10 @@
 """REST client handling, including IndeedSponsoredJobsStream base class."""
 
 from __future__ import annotations
-import copy
 
 import json
-import logging
-from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Union
+from typing import Any, Callable, Dict, Generator, Iterable, Optional
 from urllib.parse import urlparse
 
 import backoff
@@ -41,7 +38,8 @@ class HATEOASPaginator(BaseHATEOASPaginator):
                 )
             )
             raise Exception(
-                "Pagination not implemented yet, but we require pagination here. With perpage being so high this is surprising!"
+                "Pagination not implemented yet, but we require pagination here. With "
+                "perpage being so high this is surprising!"
             )
             return retval
         except StopIteration:
@@ -297,7 +295,7 @@ class IndeedSponsoredJobsStream(RESTStream):
     def is_json(self, myjson):
         try:
             json.loads(myjson)
-        except ValueError as e:
+        except ValueError:
             return False
         return True
 
@@ -344,7 +342,7 @@ class IndeedSponsoredJobsStream(RESTStream):
                 yield transformed_record
         except ScopeNotWorkingForEmployerID as e:
             self.logger.warning(e)
-    
+
     def backoff_max_tries(self) -> int:
         """The number of attempts before giving up when retrying requests.
 
@@ -352,7 +350,7 @@ class IndeedSponsoredJobsStream(RESTStream):
             Number of max retries.
         """
         return 20
-    
+
     def backoff_wait_generator(self) -> Generator[float, None, None]:
         """The wait generator used by the backoff decorator on request failure.
 
@@ -396,4 +394,3 @@ class IndeedSponsoredJobsStream(RESTStream):
             on_backoff=self.backoff_handler,
         )(func)
         return decorator
-    
