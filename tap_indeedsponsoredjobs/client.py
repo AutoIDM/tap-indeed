@@ -1,23 +1,33 @@
 """REST client handling, including IndeedSponsoredJobsStream base class."""
 
 from __future__ import annotations
-import copy
 
+import functools
 import json
 import logging
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, Iterable, List, Optional, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Union,
+)
 from urllib.parse import urlparse
 
 import backoff
 import cloudscraper
 import requests
-from memoization import cached
 from singer_sdk.exceptions import FatalAPIError, RetriableAPIError
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 from singer_sdk.pagination import BaseAPIPaginator, BaseHATEOASPaginator, first
 from singer_sdk.streams import RESTStream
+from singer_sdk.streams.rest import HTTPRequest, PageContext
 
 from tap_indeedsponsoredjobs.auth import IndeedSponsoredJobsAuthenticator
 
@@ -111,76 +121,30 @@ class IndeedSponsoredJobsStream(RESTStream):
         """
         return HATEOASPaginator()
 
-    def prepare_request(self, context, next_page_token) -> requests.PreparedRequest:
-        """Prepare a request object for this stream.
+    def get_http_request(self, *, page: PageContext) -> HTTPRequest:
+        """Get an HTTP request authenticated for the context's employer."""
+        request = super().get_http_request(page=page)
+        request.headers.update(self.get_auth_headers(page.stream_context))
+        return request
 
-        If partitioning is supported, the `context` object will contain the partition
-        definitions. Pagination information can be parsed from `next_page_token` if
-        `next_page_token` is not None.
+    def get_auth_headers(self, context: Optional[Mapping[str, Any]]) -> dict:
+        """Return auth headers for the employer in context, or for all employers."""
+        employer_id = context.get("_sdc_employer_id") if context else None
+        return self.get_authenticator(employer_id).get_auth_headers()
 
-        Args:
-            context: Stream partition or context dictionary.
-            next_page_token: Token, page number or any request argument to request the
-                next page of data.
-
-        Returns:
-            Build a request with the stream's URL, path, query parameters,
-            HTTP headers and authenticator.
-        """
-        http_method = self.rest_method
-        url: str = self.get_url(context)
-        params: dict = self.get_url_params(context, next_page_token)
-        request_data = self.prepare_request_payload(context, next_page_token)
-        headers = self.http_headers
-
-        return self.build_prepared_request(
-            method=http_method,
-            url=url,
-            params=params,
-            headers=headers,
-            json=request_data,
-            context=context,
-        )
-
-    def build_prepared_request(
-        self,
-        *args: Any,
-        **kwargs: Any,
-    ) -> requests.PreparedRequest:
-        """Build a generic but authenticated request.
-
-        Uses the authenticator instance to mutate the request with authentication.
-
-        Args:
-            *args: Arguments to pass to `requests.Request`_.
-            **kwargs: Keyword arguments to pass to `requests.Request`_.
-
-        Returns:
-            A `requests.PreparedRequest`_ object.
-
-        .. _requests.PreparedRequest:
-            https://requests.readthedocs.io/en/latest/api/#requests.PreparedRequest
-        .. _requests.Request:
-            https://requests.readthedocs.io/en/latest/api/#requests.Request
-        """
-        context = kwargs.pop(
-            "context"
-        )  # Hack as we need a different authenticator based on context
-        request = requests.Request(*args, **kwargs)
-
-        if context and context["_sdc_employer_id"]:
-            authenticator = self.authenticator(employerid=context["_sdc_employer_id"])
-        else:
-            authenticator = self.authenticator()
-        authenticator.authenticate_request(request)
-
-        return self.requests_session.prepare_request(request)
-
-    @cached
-    def authenticator(self, employerid):
-        """Return a new authenticator object."""
-        return IndeedSponsoredJobsAuthenticator.create_singleemployerauth_for_stream(
-            self, employerid
+    @functools.cache
+    def get_authenticator(
+        self, employer_id: Optional[str] = None
+    ) -> IndeedSponsoredJobsAuthenticator:
+        """Return an authenticator for a single employer, or for all employers."""
+        if employer_id:
+            return (
+                IndeedSponsoredJobsAuthenticator.create_singleemployerauth_for_stream(
+                    self, employer_id
+                )
+            )
+        return IndeedSponsoredJobsAuthenticator.create_multiemployerauth_for_stream(
+            self
         )
 
     @property

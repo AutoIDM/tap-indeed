@@ -17,22 +17,22 @@ packages = [
     {include = "tap_indeedsponsoredjobs"}
 ]
 [tool.poetry.dependencies]
-backoff = "^2.2.0"
-python = "<3.11,>=3.7.1"
-requests = "^2.25.1"
-singer-sdk = "^0.21.0"
-cloudscraper = "1.2.64"
+python = ">=3.10,<4"
+python-backoff = "^2.2.2"
+requests = "^2.33.0"
+singer-sdk = "^0.54.9"
+cloudscraper = "^1.2.71"
 
-[tool.poetry.dev-dependencies]
-pytest = "^6.2.5"
-tox = "^3.24.4"
-flake8 = "^3.9.2"
-black = "23.1.0"
-pydocstyle = "^6.1.1"
-mypy = "^0.910"
-types-requests = "^2.26.1"
-isort = "^5.10.1"
-responses = "0.22.0"
+[tool.poetry.group.dev.dependencies]
+pytest = "^9.0.3"
+tox = "^4.0.0"
+flake8 = "^7.0.0"
+black = "^26.10.1"
+pydocstyle = "^6.3.0"
+mypy = "^2.0.0"
+types-requests = "^2.33.0"
+isort = "^9.0.2"
+responses = "^0.26.0"
 
 [tool.isort]
 profile = "black"

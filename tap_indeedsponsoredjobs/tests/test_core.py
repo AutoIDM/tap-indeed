@@ -3,9 +3,10 @@
 import datetime
 import json
 
+import backoff
 import pytest
 import responses
-from singer_sdk.testing import get_standard_tap_tests
+from singer_sdk.exceptions import RetriableAPIError
 
 from tap_indeedsponsoredjobs.auth import IndeedSponsoredJobsAuthenticator
 from tap_indeedsponsoredjobs.tap import TapIndeedSponsoredJobs
@@ -23,7 +24,7 @@ def mocked_responses():
         yield rsps
 
 
-def test_auth_backoff(mocked_responses):
+def test_auth_backoff(mocked_responses, monkeypatch):
     body = {
         "scope": "employer.advertising.subaccount.read employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read employer_access",
         "client_id": "abc",
@@ -37,14 +38,20 @@ def test_auth_backoff(mocked_responses):
         status=400,
         content_type="application/json",
     )
+    monkeypatch.setattr(
+        IndeedSponsoredJobsAuthenticator,
+        "backoff_wait_generator",
+        lambda self: backoff.constant(interval=0),
+    )
     tap = TapIndeedSponsoredJobs(config=SAMPLE_CONFIG, parse_env_config=False)
     employer_stream = tap.streams["employers"]
-    auth = IndeedSponsoredJobsAuthenticator(
-        stream=employer_stream,
-        oauth_scopes=body["scope"],
-        auth_endpoint="https://apis.indeed.com/oauth/v2/tokens",
+    auth = IndeedSponsoredJobsAuthenticator.create_multiemployerauth_for_stream(
+        employer_stream
     )
-    headers = auth.auth_headers
+    with pytest.raises(RetriableAPIError):
+        auth.get_auth_headers()
+    # 400s from the token endpoint are retried before giving up
+    assert len(mocked_responses.calls) == 10
 
 
 # Run standard built-in tap tests from the SDK:
