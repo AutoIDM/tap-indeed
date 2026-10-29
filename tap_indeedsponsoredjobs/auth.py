@@ -1,6 +1,8 @@
 """IndeedSponsoredJobs Authentication."""
 
-from typing import Callable, Generator
+from __future__ import annotations
+
+from typing import Callable
 from urllib.parse import urlparse
 
 import backoff
@@ -17,31 +19,39 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
 
     def __init__(
         self,
-        stream: RESTStream,
-        auth_endpoint,
-        oauth_scopes,
-        default_expiration=None,
-        employerid=None,
+        *,
+        client_id: str,
+        client_secret: str,
+        session: Session,
+        user_agent: str,
+        auth_endpoint: str,
+        oauth_scopes: str,
+        default_expiration: int | None = None,
+        employerid: str | None = None,
     ) -> None:
         """Create a new authenticator.
 
         Args:
-            stream: The stream instance to use with this authenticator.
-            auth_endpoint: API username.
-            oauth_scopes: API password.
+            client_id: OAuth client ID.
+            client_secret: OAuth client secret.
+            session: Session to send token requests with.
+            user_agent: User-Agent header for token requests.
+            auth_endpoint: OAuth token endpoint.
+            oauth_scopes: Space separated OAuth scopes.
             default_expiration: Default token expiry in seconds.
+            employerid: Employer to scope the token to, if any.
         """
         super().__init__(
-            stream=stream,
             auth_endpoint=auth_endpoint,
             oauth_scopes=oauth_scopes,
             default_expiration=default_expiration,
+            client_id=client_id,
+            client_secret=client_secret,
         )
         self._employerid = employerid
-        self._user_agent = stream.http_headers[
-            "User-Agent"
-        ]  # Cloud Flare is blocking us with a 1020 error.
-        self._session = stream.requests_session
+        # Cloud Flare is blocking us with a 1020 error.
+        self._user_agent = user_agent
+        self._session = session
 
     @property
     def employerid(self):
@@ -57,8 +67,8 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         """Define the OAuth request body for the IndeedSponsoredJobs API."""
         oauth_request_body = {
             "scope": self.oauth_scopes,
-            "client_id": self.config["client_id"],
-            "client_secret": self.config["client_secret"],
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
             "grant_type": "client_credentials",
         }
         if self.employerid:
@@ -66,36 +76,44 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         return oauth_request_body
 
     @classmethod
+    def _create_for_stream(cls, stream: RESTStream, **kwargs):
+        authenticator = cls(
+            client_id=stream.config["client_id"],
+            client_secret=stream.config["client_secret"],
+            session=stream.requests_session,
+            user_agent=stream.http_headers["User-Agent"],
+            **kwargs,
+        )
+        authenticator.logger = stream.logger
+        return authenticator
+
+    @classmethod
     def create_multiemployerauth_for_stream(cls, stream):
-        return cls(
-            stream=stream,
+        return cls._create_for_stream(
+            stream,
             auth_endpoint="https://apis.indeed.com/oauth/v2/tokens",
             oauth_scopes="employer.advertising.subaccount.read employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read employer_access",
         )
 
     @classmethod
     def create_singleemployerauth_for_stream(cls, stream, employerid):
-        return cls(
-            stream=stream,
+        return cls._create_for_stream(
+            stream,
             auth_endpoint="https://apis.indeed.com/oauth/v2/tokens",
             oauth_scopes="employer.advertising.subaccount.read employer.advertising.account.read employer.advertising.campaign.read employer.advertising.campaign_report.read",
             employerid=employerid,
         )
 
-    @property
-    def auth_headers(self) -> dict:
-        """Return a dictionary of auth headers to be applied.
-
-        These will be merged with any `http_headers` specified in the stream.
+    def get_auth_headers(self) -> dict:
+        """Return auth headers, refreshing the access token if needed.
 
         Returns:
             HTTP headers for authentication.
         """
         if not self.is_token_valid():
             self.update_access_token()
-        result = super().auth_headers
-        result["Authorization"] = f"Bearer {self.access_token}"
-        return result
+        self.auth_headers["Authorization"] = f"Bearer {self.access_token}"
+        return dict(self.auth_headers)
 
     def update_access_token(self) -> None:
         """Update `access_token` along with: `last_refreshed` and `expires_in`.
@@ -117,7 +135,8 @@ class IndeedSponsoredJobsAuthenticator(OAuthAuthenticator):
         self.logger.info("OAuth authorization attempt was successful.")
         token_json = token_response.json()
         self.access_token = token_json["access_token"]
-        self.expires_in = token_json.get("expires_in", self._default_expiration)
+        expiration = token_json.get("expires_in", self._default_expiration)
+        self.expires_in = int(expiration) if expiration else None
         if self.expires_in is None:
             self.logger.debug(
                 "No expires_in receied in OAuth response and no "

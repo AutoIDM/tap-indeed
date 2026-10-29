@@ -8,16 +8,11 @@ from pathlib import Path
 import threading
 from typing import Any, Dict, Iterable, List, Optional, Union
 
-import pendulum
 import requests
-from memoization import cached
-from requests import PreparedRequest
 from singer_sdk import typing as th  # JSON Schema typing helpers
-from singer_sdk.authenticators import OAuthAuthenticator
 from singer_sdk.pagination import BaseAPIPaginator, SimpleHeaderPaginator
 from singer_sdk.helpers.jsonpath import extract_jsonpath
 
-from tap_indeedsponsoredjobs.auth import IndeedSponsoredJobsAuthenticator
 from tap_indeedsponsoredjobs.client import (
     IndeedSponsoredJobsStream,
     ScopeNotWorkingForEmployerID,
@@ -52,13 +47,6 @@ class Employers(IndeedSponsoredJobsStream):
     replication_key = None
     records_jsonpath = "$.['employers'][*]"  # Or override `parse_response`.
     url_base = "https://secure.indeed.com/v2/api"
-
-    @cached
-    def authenticator(self) -> IndeedSponsoredJobsAuthenticator:
-        """Return a new authenticator object."""
-        return IndeedSponsoredJobsAuthenticator.create_multiemployerauth_for_stream(
-            self
-        )
 
     # Optionally, you may also use `schema_filepath` in place of `schema`:
     # schema_filepath = SCHEMAS_DIR / "users.json"
@@ -138,7 +126,7 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
         return params
     
     @property
-    def start_date(self) -> pendulum.DateTime:
+    def start_date(self) -> datetime.datetime:
         return self._start_date
 
     @start_date.setter
@@ -147,11 +135,11 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
 
     @property
     def start_date_format(self) -> str:
-        return self.start_date.format("YYYY-MM-DD")
+        return self.start_date.strftime("%Y-%m-%d")
 
     @property
     def end_date_format(self) -> str:
-        return self.start_date.add(days=1).format("YYYY-MM-DD")
+        return (self.start_date + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
     def get_records(self, context: dict | None) -> Iterable[dict[str, Any]]:
         """Return a generator of record-type dictionary objects.
@@ -169,16 +157,15 @@ class EmployerStatsReport(IndeedSponsoredJobsStream):
                 self.get_starting_timestamp(context)
             if starting_timestamp is None:
                 raise Exception("No start date provided. Please provide a start date.")
-            initial_start_date: pendulum.DateTime = \
-                pendulum.instance(starting_timestamp)
             # Set instance var start date for the get_url_params function
-            self.start_date = initial_start_date
+            self.start_date = starting_timestamp
 
-            while self.start_date.date() != pendulum.today().date():
+            while self.start_date.date() != datetime.date.today():
                 yield from self.get_single_report(context)
-                self.start_date = self.start_date.add(days=1)
+                self.start_date = self.start_date + datetime.timedelta(days=1)
+                days_left = abs((datetime.date.today() - self.start_date.date()).days)
                 self.logger.info(
-                    f"We have { pendulum.today().diff(self.start_date).in_days() } day(s) left. Fetching {self.start_date_format} to {self.end_date_format} next."
+                    f"We have { days_left } day(s) left. Fetching {self.start_date_format} to {self.end_date_format} next."
                 )
         except ScopeNotWorkingForEmployerID as e:
             self.logger.warning(e)
@@ -366,9 +353,7 @@ class Campaigns(IndeedSponsoredJobsStream):
                 method="GET",
                 url=endpoint,
                 params=super().get_url_params(context, paginator.current_value),
-                headers=self.http_headers,
-                json=None,
-                context=context,
+                headers={**self.http_headers, **self.get_auth_headers(context)},
             )
 
             resp = decorated_request(prepared_request, context)
@@ -416,12 +401,13 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
         params: dict = {}
         params["perPage"] = 1000000000
 
-        start_date = self.get_starting_replication_key_value(context)
-        start_date = pendulum.parse(start_date)
+        start_date = datetime.date.fromisoformat(
+            self.get_starting_replication_key_value(context)[:10]
+        )
 
-        days_from_today = pendulum.today().diff(start_date).in_days()
+        days_from_today = abs((datetime.date.today() - start_date).days)
         if days_from_today > 365:
-            start_date = pendulum.today().subtract(days=365)
+            start_date = datetime.date.today() - datetime.timedelta(days=365)
             self.logger.info(
                 f"We have {days_from_today} day(s) left. "
                 "The campaign stats endpoint only allows "
@@ -429,7 +415,7 @@ class CampaignPerformanceStats(IndeedSponsoredJobsStream):
                 f"We are modifiying the start_date to be {start_date}"
             )
 
-        params["startDate"] = start_date.format("YYYY-MM-DD")
+        params["startDate"] = start_date.strftime("%Y-%m-%d")
         return params
 
 
